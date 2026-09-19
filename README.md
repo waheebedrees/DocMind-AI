@@ -29,3 +29,4 @@ make fmt           # auto-format
 ## Roadmap
 
 - [x] Phase 1 · Step 1 — Scaffold, Docker, health
+- [x] Phase 1 · Step 2 — Models + Alembic migrations

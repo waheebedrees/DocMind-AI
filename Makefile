@@ -30,6 +30,8 @@ logs:
 rebuild: 	
 		$(COMPOSE)  build backend
 
+restart: 
+		$(COMPOSE) down  &&  $(COMPOSE) up -d
 shell:
 		$(COMPOSE)  exec backend bash 
 
@@ -48,3 +50,14 @@ lint-check:
 fmt:
 		cd backend && uv run ruff format .
 
+migrate:
+	$(COMPOSE) exec backend alembic revision --autogenerate -m "$(m)"
+
+upgrade:
+	$(COMPOSE) exec backend alembic upgrade head
+
+downgrade:
+	$(COMPOSE) exec backend alembic downgrade -1
+
+history:
+	$(COMPOSE) exec backend alembic history
