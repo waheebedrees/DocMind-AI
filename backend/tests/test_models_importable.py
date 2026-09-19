@@ -1,6 +1,5 @@
-from app.db.base import Base
 import app.models  # noqa: F401
-
+from app.db.base import Base
 
 EXPECTED_TABLES = {
     "users",

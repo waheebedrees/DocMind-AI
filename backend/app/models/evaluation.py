@@ -18,7 +18,6 @@ class EvaluationRun(UUIDMixin, TimestampMixin, Base):
         nullable=False,
     )
 
-
     version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 

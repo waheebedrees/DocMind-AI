@@ -48,7 +48,6 @@ class Document(UUIDMixin, TimestampMixin, Base):
 
     metadata_: Mapped[dict] = mapped_column(JSONB, default=dict)
 
-
     version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
