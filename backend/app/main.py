@@ -15,7 +15,7 @@ log = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    log.info("app_starting", env=settings.environment, app=settings.app_name)
+    log.info("app_starting", env=settings.environment, app=settings.app_name, db_url=settings.database_url, redis_url=settings.redis_url)
     try:
         yield
     finally:
@@ -34,7 +34,6 @@ def create_app() -> FastAPI:
         redoc_url=None,
         docs_url=settings.docs_url,
     )
-
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allow_origins,

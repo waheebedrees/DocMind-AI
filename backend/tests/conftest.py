@@ -1,22 +1,23 @@
-import os
-
 import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
+from pathlib import Path
+from dotenv import load_dotenv
 
-os.environ["APP_ENV"] = "test"
-os.environ["POSTGRES_DB"] = "docmind_test"
-os.environ["POSTGRES_HOST"] = "localhost"
-
+# tests → backend → docmind-ai
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(PROJECT_ROOT / "envs" / "test.env", override=True)
 
 from app.core.config import settings
 from app.db import Base, get_db
 from app.main import app
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 
 @pytest_asyncio.fixture(scope="session")
 async def engine():
+    print("DB URL:", settings.database_url)     # add this line
+
     eng = create_async_engine(
         settings.database_url,
         poolclass=NullPool,
@@ -72,3 +73,6 @@ async def authed(client: AsyncClient):
     token = res.json()["access_token"]
     client.headers["Authorization"] = f"Bearer {token}"
     return client
+
+
+

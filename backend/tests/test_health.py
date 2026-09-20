@@ -19,6 +19,7 @@ async def test_health_ok_when_all_dependencies_up(monkeypatch):
     monkeypatch.setattr(health_module, "_check_postgres", __db_ok)
     monkeypatch.setattr(health_module, "_check_redis", _ok)
 
+    # print(f"DEBUG: {sys.path}")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/api/v1/health")
@@ -39,7 +40,6 @@ async def test_health_degraded_when_dependency_down(monkeypatch):
         response = await client.get("/api/v1/health")
 
     body = response.json()
-    print(body)
     assert response.status_code == 503
     assert body["status"] == "error"
     assert body["components"]["postgres"]["detail"] == "boom"

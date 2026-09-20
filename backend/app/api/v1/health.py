@@ -8,8 +8,8 @@ from redis import AuthenticationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import DbSession
 from app.core.config import settings
+from app.core.deps import DbSession
 from app.core.logging import get_logger
 from app.db.redis import get_redis
 
@@ -58,9 +58,7 @@ async def health(response: Response, db: DbSession) -> HealthResponse:
     start = time.monotonic()
     components = {"postgres": await _check_postgres(db), "redis": await _check_redis()}
 
-    overall: CheckStatus = (
-        "ok" if all(check.status == "ok" for check in components.values()) else "error"
-    )
+    overall: CheckStatus = "ok" if all(check.status == "ok" for check in components.values()) else "error"
     if overall == "error":
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 

@@ -5,7 +5,7 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     env_file:
-      - ../.env 
+      - ../${ENV_FILE:-envs/dev.env}
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -27,7 +27,8 @@ services:
     ports:
       - "6379:6379"
     env_file:
-      - ../.env
+      - ../${ENV_FILE:-envs/dev.env}
+
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
@@ -46,7 +47,7 @@ services:
       context: ..
       dockerfile: infra/DockerFile.backend
     env_file:
-      - ../.env
+      - ../${ENV_FILE:-envs/dev.env}
     depends_on:
       postgres:
           condition: service_healthy
@@ -57,9 +58,12 @@ services:
     volumes:
       - ../backend/app:/app/app 
       - ../backend/alembic:/app/backend/alembic   
-      - ../alembic.ini:/app/alembic.ini:ro         
+      - ../alembic.ini:/app/alembic.ini:ro 
+      - docling_cache:/root/.cache
+        
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/app"]
 
 volumes:
   pg_data:
   redis_data:
+  docling_cache:
