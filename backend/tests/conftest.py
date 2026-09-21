@@ -16,7 +16,7 @@ from sqlalchemy.pool import NullPool
 
 @pytest_asyncio.fixture(scope="session")
 async def engine():
-    print("DB URL:", settings.database_url)     # add this line
+    print("DB URL:", settings.database_url)  # add this line
 
     eng = create_async_engine(
         settings.database_url,
@@ -73,6 +73,3 @@ async def authed(client: AsyncClient):
     token = res.json()["access_token"]
     client.headers["Authorization"] = f"Bearer {token}"
     return client
-
-
-
