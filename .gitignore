@@ -22,7 +22,9 @@ __pycache__/
 .venv
 .env.*
 !.env.example
-
+./envs
+/envs
+*envs
 
 .ruff_cache
 .pytest_cache 
