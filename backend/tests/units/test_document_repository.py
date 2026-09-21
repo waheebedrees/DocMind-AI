@@ -2,12 +2,12 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from app.core.exceptions import NotFoundError
 from app.db.repositories.documents import DocumentRepository
 from app.models.document import Document
 from app.models.enums import DocumentStatus
 from app.models.user import User
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.exceptions import NotFoundError
 
 pytestmark = pytest.mark.unit
 

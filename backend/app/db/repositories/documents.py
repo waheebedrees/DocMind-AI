@@ -4,11 +4,11 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import NotFoundError
 from app.db.repositories.base import BaseRepository
 from app.models.document import Document
 from app.models.enums import DocumentStatus
 from app.models.processing_job import ProcessingJob
-from app.core.exceptions import NotFoundError
 
 
 class DocumentRepository(BaseRepository[Document]):
