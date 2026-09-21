@@ -1,13 +1,11 @@
-from unittest.mock import AsyncMock, MagicMock
 import uuid
 from datetime import datetime
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.exceptions import NotFoundError
 from app.db.repositories.jobs import JobRepository
 from app.models.enums import JobStage, JobStatus
+from sqlalchemy.ext.asyncio import AsyncSession
 from tests.units.conftest import make_document, make_job, make_user
 
 
@@ -44,140 +42,126 @@ class TestCreateEnqueue:
         assert job.details == {}
         assert job.started_at is None
         assert job.finished_at is None
-        
+
     async def test_two_jobs_have_distinct_ids(self, db: AsyncSession, repo: JobRepository):
         doc = await _a_document(db)
-        
+
         j1 = await repo.create_enqueue(doc.id, JobStage.EXTRACT)
         j2 = await repo.create_enqueue(doc.id, JobStage.INDEX)
-        
-        assert j1.id != j2.id 
-        
-        
-class TestMakeRunning:
 
+        assert j1.id != j2.id
+
+
+class TestMakeRunning:
     async def test_queued_transitions_to_running(self, db: AsyncSession, repo: JobRepository):
         doc = await _a_document(db)
         j = await _persist(db, make_job(doc.id))
         result = await repo.make_running(j.id)
-        
+
         assert result.status == JobStatus.RUNNING
         assert result.started_at is not None
         assert isinstance(result.started_at, datetime)
-        
+
     async def test_running_is_idempotent(self, db: AsyncSession, repo: JobRepository):
         doc = await _a_document(db)
-        j  = await _persist(db, make_job(doc.id, status=JobStatus.RUNNING))
+        j = await _persist(db, make_job(doc.id, status=JobStatus.RUNNING))
 
         result = await repo.make_running(j.id)
         assert result.status == JobStatus.RUNNING
-        
+
     async def test_reject_done_job(self, db: AsyncSession, repo: JobRepository):
         doc = await _a_document(db)
-        j  = await _persist(db, make_job(doc.id, status=JobStatus.DONE))
+        j = await _persist(db, make_job(doc.id, status=JobStatus.DONE))
 
         with pytest.raises(NotFoundError):
             await repo.make_running(j.id)
-        
+
     async def test_reject_failed_job(self, db: AsyncSession, repo: JobRepository):
-        
+
         doc = await _a_document(db)
         j = await _persist(db, make_job(doc.id, status=JobStatus.FAILED))
         with pytest.raises(NotFoundError):
             await repo.make_running(j.id)
-        
+
     async def test_mission_job_raises(self, db: AsyncSession, repo: JobRepository):
         with pytest.raises(NotFoundError):
             await repo.make_running(uuid.uuid4())
-        
+
 
 class TestMakeDone:
-    
     async def test_running_transitions_to_done(self, db: AsyncSession, repo: JobRepository):
 
         doc = await _a_document(db)
         j = await _persist(db, make_job(doc.id, status=JobStatus.RUNNING))
-        
+
         res = await repo.make_done(j.id)
         assert res.status == JobStatus.DONE
         assert res.finished_at is not None
         assert isinstance(res.finished_at, datetime)
-        
+
     async def test_merges_details(self, db: AsyncSession, repo: JobRepository):
         doc = await _a_document(db)
-        j = await _persist(db, make_job(
-            doc.id, details={"pages": 3, 'lang':'en'}
-        ))
-        
-        result = await repo.make_done(j.id, details={'token':512})
-        assert result.details == {"pages": 3, 'lang': 'en', 'token':512}
-        
+        j = await _persist(db, make_job(doc.id, details={"pages": 3, "lang": "en"}))
+
+        result = await repo.make_done(j.id, details={"token": 512})
+        assert result.details == {"pages": 3, "lang": "en", "token": 512}
+
     async def test_done_without_details_keep_existing(self, db: AsyncSession, repo: JobRepository):
         doc = await _a_document(db)
-        j = await _persist(db, make_job(
-            doc.id, details={"pages": 3, 'lang': 'en'}
-        ))
+        j = await _persist(db, make_job(doc.id, details={"pages": 3, "lang": "en"}))
 
         result = await repo.make_done(j.id)
-        assert result.details == {"pages": 3, 'lang': 'en'}
+        assert result.details == {"pages": 3, "lang": "en"}
 
     async def test_already_done_is_idempotent_and_returns_job(self, db: AsyncSession, repo: JobRepository):
-        
+
         doc = await _a_document(db)
-        j = await _persist(db, make_job(
-            doc.id, status=JobStatus.DONE,
-        ))
+        j = await _persist(
+            db,
+            make_job(
+                doc.id,
+                status=JobStatus.DONE,
+            ),
+        )
         res = await repo.make_done(j.id)
         assert res is not None
         assert res.status == JobStatus.DONE
-        
+
     async def test_mission_job_raises(self, db: AsyncSession, repo: JobRepository):
         with pytest.raises(NotFoundError):
             await repo.make_done(uuid.uuid4())
 
 
 class TestMakeFailed:
-
     async def test_set_status_and_error_details(self, db: AsyncSession, repo: JobRepository):
-        
+
         doc = await _a_document(db)
         j = await _persist(db, make_job(doc.id))
-        
+
         res = await repo.make_failed(j.id, error="parse timeout")
         assert res.status == JobStatus.FAILED
         assert res.finished_at is not None
         assert isinstance(res.finished_at, datetime)
-        assert res.details['error'] == 'parse timeout'
+        assert res.details["error"] == "parse timeout"
 
     async def test_mission_job_raises(self, db: AsyncSession, repo: JobRepository):
         with pytest.raises(NotFoundError):
-            await repo.make_failed(uuid.uuid4(), error='x')
+            await repo.make_failed(uuid.uuid4(), error="x")
 
     async def test_merges_extra_details(self, db: AsyncSession, repo: JobRepository):
         doc = await _a_document(db)
-        j = await _persist(db, make_job(
-            doc.id,
-            details={"pages": 5}
-        ))
-        
-        res = await repo.make_failed(
-            j.id, 
-            error='boom',
-            details={"retryable": True}
-        )
-        assert res.details == {"pages": 5, 'error': 'boom', "retryable": True}
-        
+        j = await _persist(db, make_job(doc.id, details={"pages": 5}))
+
+        res = await repo.make_failed(j.id, error="boom", details={"retryable": True})
+        assert res.details == {"pages": 5, "error": "boom", "retryable": True}
+
     async def test_details_can_override_error(self, db: AsyncSession, repo: JobRepository):
         doc = await _a_document(db)
-        j = await _persist(db, make_job( doc.id))
-        
-        res = await repo.make_failed(
-            j.id, 
-            error='first',
-            details={"error": "second"}
-        )
-        assert res.details['error'] == 'second'
-        
+        j = await _persist(db, make_job(doc.id))
+
+        res = await repo.make_failed(j.id, error="first", details={"error": "second"})
+        assert res.details["error"] == "second"
+
 
 class TestListForDocument:
     async def test_returns_all_jobs_in_creation_order(self, db: AsyncSession, repo: JobRepository):
@@ -212,7 +196,7 @@ class TestLatestByStage:
     async def test_returns_newest_job_per_stage(self, db: AsyncSession):
         doc = await _a_document(db)
         # two PARSE jobs, oldest first
-        old_parse = await _persist(db, make_job(doc.id, stage=JobStage.EXTRACT))
+        old_parse = await _persist(db, make_job(doc.id, stage=JobStage.EXTRACT))  # noqa: F841
         new_parse = await _persist(db, make_job(doc.id, stage=JobStage.EXTRACT))
         index_job = await _persist(db, make_job(doc.id, stage=JobStage.INDEX))
         repo = JobRepository(db)

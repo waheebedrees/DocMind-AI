@@ -1,37 +1,28 @@
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
-from typing import Optional
-from sqlalchemy import select, func
+
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.repositories.base import BaseRepository
 from app.models.document import Document
 from app.models.enums import DocumentStatus
 from app.models.processing_job import ProcessingJob
-
-from datetime import datetime, timedelta, timezone
+from app.core.exceptions import NotFoundError
 
 
 class DocumentRepository(BaseRepository[Document]):
     def __init__(self, session: AsyncSession):
         super().__init__(Document, session)
 
-    async def create(self, user_id: UUID, filename: str, mime_type: str, size_bytes: int, storage_key: str, content_hash: str) -> Document:
-        doc = Document(
-            user_id=user_id, filename=filename, mime_type=mime_type, storage_key=storage_key, size_bytes=size_bytes, content_hash=content_hash
-        )
-
-        self.session.add(doc)
-        await self.session.flush()
-        return doc
-
-    async def get_for_user(self, document_id: UUID, user_id: UUID) -> Optional[Document]:
+    async def get_for_user(self, document_id: UUID, user_id: UUID) -> Document | None:
 
         stmt = select(self.model).where(Document.id == document_id, Document.user_id == user_id)
         doc = await self.session.execute(stmt)
 
         return doc.scalar()
 
-    async def find_by_content_hash(self, user_id: UUID, content_hash: str) -> Optional[Document]:
+    async def find_by_content_hash(self, user_id: UUID, content_hash: str) -> Document | None:
         """Deduplication lookup for re-uploading the same file."""
         return await self.session.scalar(select(Document).where(Document.user_id == user_id, Document.content_hash == content_hash))
 
@@ -62,15 +53,25 @@ class DocumentRepository(BaseRepository[Document]):
     async def set_status(self, document_id: UUID, status: DocumentStatus, error_messages: str | None = None) -> None:
 
         doc = await self.get_by_id(document_id)
+        if doc is None:
+            raise NotFoundError(
+                "document Not found",
+                code="invalid_document_id ",
+            )
         doc.status = status
         doc.error_message = error_messages
         if status == DocumentStatus.INDEXED:
-            doc.indexed_at = datetime.now(timezone.utc)
+            doc.indexed_at = datetime.now(UTC)
 
         await self.session.flush()
 
     async def set_parsed_key(self, document_id: UUID, parsed_key: str) -> None:
         doc = await self.get_by_id(document_id)
+        if doc is None:
+            raise NotFoundError(
+                "document Not found",
+                code="invalid_document_id ",
+            )        
         doc.parsed_key = parsed_key
         await self.session.flush()
 
@@ -88,7 +89,7 @@ class DocumentRepository(BaseRepository[Document]):
 
     async def find_pending_without_job(self, user_id: UUID, older_than_seconds: int = 12, limit: int = 20) -> list[Document]:
 
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=older_than_seconds)
+        cutoff = datetime.now(UTC) - timedelta(seconds=older_than_seconds)
         active = select(ProcessingJob.id).where(ProcessingJob.document_id == Document.id, ProcessingJob.status.in_(["queued", "running"])).exists()
         rows = await self.session.scalars(
             select(Document)

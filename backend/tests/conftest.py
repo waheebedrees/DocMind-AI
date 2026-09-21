@@ -1,17 +1,18 @@
-import pytest_asyncio
 from pathlib import Path
+
+import pytest_asyncio
 from dotenv import load_dotenv
 
 # tests → backend → docmind-ai
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / "envs" / "test.env", override=True)
 
-from app.core.config import settings
-from app.db import Base, get_db
-from app.main import app
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
+from app.core.config import settings  # noqa: E402
+from app.db import Base, get_db  # noqa: E402
+from app.main import app  # noqa: E402
+from httpx import ASGITransport, AsyncClient  # noqa: E402
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine  # noqa: E402
+from sqlalchemy.pool import NullPool  # noqa: E402
 
 
 @pytest_asyncio.fixture(scope="session")

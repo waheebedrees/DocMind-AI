@@ -1,18 +1,13 @@
-from app.models.processing_job import ProcessingJob
-from app.models.enums import JobStage, JobStatus
-from unittest.mock import AsyncMock, MagicMock
+import uuid
+from datetime import datetime
+from unittest.mock import MagicMock
 
 import pytest
 from app.db.repositories.user_repo import UserRepository
-import uuid
-from datetime import datetime, timedelta, timezone
-
-
 from app.models.document import Document
-from app.models.enums import DocumentStatus
+from app.models.enums import DocumentStatus, JobStage, JobStatus
+from app.models.processing_job import ProcessingJob
 from app.models.user import User
-
-from app.db.repositories.documents import DocumentRepository
 
 
 @pytest.fixture

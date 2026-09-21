@@ -1,11 +1,10 @@
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+import uuid as _uuid
+
 import pytest
 from app.db.repositories.user_repo import UserRepository
 from app.models.user import User
-
-
-import uuid as _uuid
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def unique_email(prefix: str = "user") -> str:
@@ -38,7 +37,6 @@ async def _persist(db: AsyncSession, *objs):
     return objs if len(objs) > 1 else objs[0]
 
 
-
 class TestGetByEmail:
     async def test_returns_user_when_found(self, db: AsyncSession):
         email = unique_email()
@@ -59,7 +57,6 @@ class TestGetByEmail:
         repo = UserRepository(db)
 
         assert await repo.get_by_email("") is None
-
 
 
 class TestExistsByEmail:
@@ -130,10 +127,8 @@ class TestCreateUser:
     async def test_returns_distinct_ids_for_distinct_users(self, db: AsyncSession):
         repo = UserRepository(db)
 
-        u1 = await repo.create_user(
-            email=unique_email("a"), hash_password="x")
-        u2 = await repo.create_user(
-            email=unique_email("b"), hash_password="y")
+        u1 = await repo.create_user(email=unique_email("a"), hash_password="x")
+        u2 = await repo.create_user(email=unique_email("b"), hash_password="y")
 
         assert u1.id != u2.id
 
@@ -153,8 +148,7 @@ class TestCreateUser:
 
 class TestConfirmUserEmail:
     async def test_sets_both_flags(self, db: AsyncSession):
-        user = await _persist(db, make_user(
-            email=unique_email(), is_active=False, is_verified=False))
+        user = await _persist(db, make_user(email=unique_email(), is_active=False, is_verified=False))
         repo = UserRepository(db)
 
         updated = await repo.confirm_user_email(user.id)
@@ -171,8 +165,7 @@ class TestConfirmUserEmail:
         assert result is None
 
     async def test_is_idempotent(self, db: AsyncSession):
-        user = await _persist(db, make_user(
-            email=unique_email(), is_active=True, is_verified=True))
+        user = await _persist(db, make_user(email=unique_email(), is_active=True, is_verified=True))
         repo = UserRepository(db)
 
         first = await repo.confirm_user_email(user.id)

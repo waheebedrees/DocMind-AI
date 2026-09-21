@@ -1,13 +1,12 @@
-from sqlalchemy import exists, select
-from uuid import UUID, uuid4
-from typing import Optional
-from sqlalchemy import select, func, insert, delete, Result
+from uuid import UUID
+
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.repositories.base import BaseRepository
-from app.models.processing_job import ProcessingJob
-from app.models.enums import JobStage, JobStatus
 from app.core.exceptions import NotFoundError
+from app.db.repositories.base import BaseRepository
+from app.models.enums import JobStage, JobStatus
+from app.models.processing_job import ProcessingJob
 
 
 class JobRepository(BaseRepository[ProcessingJob]):
@@ -35,7 +34,7 @@ class JobRepository(BaseRepository[ProcessingJob]):
         job = await self.get_by_id(job_id)
         if job is None:
             raise NotFoundError(
-                f"Job Not found",
+                "Job Not found",
                 code="invalid_job_id ",
             )
         if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
@@ -54,13 +53,13 @@ class JobRepository(BaseRepository[ProcessingJob]):
         job = await self.get_by_id(job_id)
         if job is None:
             raise NotFoundError(
-                f"Job Not found",
+                "Job Not found",
                 code="invalid_job_id ",
             )
-        
+
         job.status = JobStatus.DONE
         job.finished_at = func.now()
-        
+
         if details:
             job.details = {**(job.details or {}), **details}
         await self.session.flush()
@@ -71,7 +70,7 @@ class JobRepository(BaseRepository[ProcessingJob]):
         job = await self.get_by_id(job_id)
         if job is None:
             raise NotFoundError(
-                f"Job Not found",
+                "Job Not found",
                 code="invalid_job_id ",
             )
         job.status = JobStatus.FAILED
@@ -98,7 +97,6 @@ class JobRepository(BaseRepository[ProcessingJob]):
         return latest
 
     async def has_active_job(self, document_id: UUID) -> bool:
-
 
         stmt = select(
             exists().where(

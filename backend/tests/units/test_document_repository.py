@@ -1,15 +1,13 @@
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.db.repositories.documents import DocumentRepository
 from app.models.document import Document
 from app.models.enums import DocumentStatus
 from app.models.user import User
-
-from app.db.repositories.documents import DocumentRepository
-
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.exceptions import NotFoundError
 pytestmark = pytest.mark.unit
 
 
@@ -126,7 +124,6 @@ class TestGetForUser:
         user = await _persist(db, make_user())
         repo = DocumentRepository(db)
         result = await repo.get_for_user(uuid.uuid4(), user.id)
-
         assert result is None
 
 
@@ -164,7 +161,7 @@ class TestFindByContentHash:
 class TestListForUser:
     async def test_returns_all_documents_newest_first(self, db: AsyncSession):
         user = await _persist(db, make_user())
-        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        base = datetime(2026, 1, 1, tzinfo=UTC)
         older = await _persist(
             db,
             make_document(
@@ -206,7 +203,7 @@ class TestListForUser:
 
     async def test_pagination_limit_and_offset(self, db: AsyncSession):
         user = await _persist(db, make_user())
-        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        base = datetime(2026, 1, 1, tzinfo=UTC)
         for i in range(5):
             await _persist(db, make_document(user.id, filename=f"f{i}.pdf", content_hash=f"h{i}", created_at=base + timedelta(minutes=i)))
 
@@ -254,7 +251,7 @@ class TestSetstatus:
         await repo.set_status(doc.id, DocumentStatus.PROCESSING)
 
         assert doc.status == DocumentStatus.PROCESSING
-        assert doc.error_message == None
+        assert doc.error_message is None
 
     async def test_stores_error_message_on_failure(self, db: AsyncSession):
         user = await _persist(db, make_user())
@@ -280,7 +277,7 @@ class TestSetstatus:
     async def test_missing_document_raises(self, db: AsyncSession):
         repo = DocumentRepository(db)
 
-        with pytest.raises((AttributeError, ValueError)):
+        with pytest.raises(NotFoundError):
             await repo.set_status(uuid.uuid4(), DocumentStatus.PROCESSING)
 
 
@@ -337,7 +334,7 @@ class TestAggregates:
 class TestFindPendingWithJob:
     async def test_returns_old_pending_with_no_job(self, db: AsyncSession):
         user = await _persist(db, make_user())
-        stale = datetime.now(timezone.utc) - timedelta(seconds=30)
+        stale = datetime.now(UTC) - timedelta(seconds=30)
         doc = await _persist(db, make_document(user.id, status=DocumentStatus.PENDING, created_at=stale))
         repo = DocumentRepository(db)
 
@@ -350,7 +347,7 @@ class TestFindPendingWithJob:
             make_document(
                 user.id,
                 status=DocumentStatus.PENDING,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             ),
         )
         repo = DocumentRepository(db)
@@ -359,7 +356,7 @@ class TestFindPendingWithJob:
 
     async def test_skip_non_pending(self, db: AsyncSession):
         user = await _persist(db, make_user())
-        stale = datetime.now(timezone.utc) - timedelta(seconds=600)
+        stale = datetime.now(UTC) - timedelta(seconds=600)
         await _persist(
             db,
             make_document(
@@ -375,11 +372,11 @@ class TestFindPendingWithJob:
         assert result == []
 
     async def test_skip_pending_with_active_job(self, db: AsyncSession):
+        from app.models.enums import JobStage, JobStatus
         from app.models.processing_job import ProcessingJob
-        from app.models.enums import JobStatus, JobStage
 
         user = await _persist(db, make_user())
-        stale = datetime.now(timezone.utc) - timedelta(seconds=600)
+        stale = datetime.now(UTC) - timedelta(seconds=600)
 
         doc = await _persist(
             db,
@@ -400,7 +397,7 @@ class TestFindPendingWithJob:
 
     async def test_respects_limit(self, db: AsyncSession):
         user = await _persist(db, make_user())
-        stale = datetime.now(timezone.utc) - timedelta(seconds=600)
+        stale = datetime.now(UTC) - timedelta(seconds=600)
         for i in range(5):
             await _persist(db, make_document(user.id, status=DocumentStatus.PENDING, created_at=stale, content_hash=f"h{i}"))
         repo = DocumentRepository(db)

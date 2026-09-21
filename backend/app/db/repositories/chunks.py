@@ -1,15 +1,12 @@
+from collections.abc import Sequence
+from dataclasses import dataclass
 from uuid import UUID, uuid4
-from typing import Optional
-from sqlalchemy import select, func, insert, delete, Result
+
+from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.repositories.base import BaseRepository
 from app.models.chunk import DocumentChunk
-from app.models.enums import DocumentStatus
-
-from collections.abc import Sequence
-
-from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -43,7 +40,6 @@ class ChunkRepository(BaseRepository[DocumentChunk]):
                 "section": r.section,
                 "token_count": r.token_count,
                 "metadata_": {"doc_item_labels": list(r.doc_item_labels)},
-
                 "embedding": r.embedding,
             }
             for r in rows
@@ -54,10 +50,8 @@ class ChunkRepository(BaseRepository[DocumentChunk]):
         return len(payload)
 
     async def delete_for_document(self, document_id: UUID) -> int:
-        result = await self.session.execute(
-            delete(DocumentChunk).where(DocumentChunk.document_id == document_id)
-        )
-        return result.rowcount or 0
+        result = await self.session.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document_id).returning(DocumentChunk.id))
+        return len(result.scalars().all())
 
     async def list_for_document(self, document_id: UUID) -> list[DocumentChunk]:
         rows = await self.session.scalars(select(DocumentChunk).where(DocumentChunk.document_id == document_id).order_by(DocumentChunk.chunk_index))

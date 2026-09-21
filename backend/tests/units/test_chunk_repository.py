@@ -1,14 +1,14 @@
-from app.models.chunk import DocumentChunk
-from app.db.repositories.chunks import ChunkRepository, ChunkRow
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import CompileError, IntegrityError
-from sqlalchemy import select
-import pytest
 import uuid
-from app.core.config import settings
-from app.db.repositories.chunks import ChunkRow
 
-from tests.units.conftest import  make_document, make_user
+import pytest
+from app.core.config import settings
+from app.db.repositories.chunks import ChunkRepository, ChunkRow
+from app.models.chunk import DocumentChunk
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+from tests.units.conftest import make_document, make_user
+
 
 def _vec(seed: float = 0.0) -> list[float]:
     return [seed] * settings.embedding_dim
@@ -56,15 +56,13 @@ async def _a_document(db: AsyncSession):
 # bulk_insert
 # ─────────────────────────────────────────────────────────────
 
+
 class TestBulkInsert:
     async def test_inserts_all_rows_and_returns_count(self, db: AsyncSession):
         """Catches the doc_item_labels CompileError bug."""
         doc = await _a_document(db)
         repo = ChunkRepository(db)
-        rows = [
-            make_chunk_row(chunk_index=i, text=f"chunk {i}")
-            for i in range(5)
-        ]
+        rows = [make_chunk_row(chunk_index=i, text=f"chunk {i}") for i in range(5)]
 
         count = await repo.bulk_insert(doc.id, rows)
 
@@ -165,6 +163,7 @@ class TestBulkInsert:
 # delete_for_document
 # ─────────────────────────────────────────────────────────────
 
+
 class TestDeleteForDocument:
     async def test_returns_number_deleted(self, db: AsyncSession):
         doc = await _a_document(db)
@@ -209,16 +208,20 @@ class TestDeleteForDocument:
 # list_for_document
 # ─────────────────────────────────────────────────────────────
 
+
 class TestListForDocument:
     async def test_returns_in_chunk_index_order(self, db: AsyncSession):
         doc = await _a_document(db)
         repo = ChunkRepository(db)
         # insert out of order on purpose
-        await repo.bulk_insert(doc.id, [
-            make_chunk_row(chunk_index=2),
-            make_chunk_row(chunk_index=0),
-            make_chunk_row(chunk_index=1),
-        ])
+        await repo.bulk_insert(
+            doc.id,
+            [
+                make_chunk_row(chunk_index=2),
+                make_chunk_row(chunk_index=0),
+                make_chunk_row(chunk_index=1),
+            ],
+        )
 
         chunks = await repo.list_for_document(doc.id)
 
@@ -257,6 +260,7 @@ class TestListForDocument:
 # count_for_document
 # ─────────────────────────────────────────────────────────────
 
+
 class TestCountForDocument:
     async def test_counts_only_target_document(self, db: AsyncSession):
         user = await _persist(db, make_user())
@@ -279,6 +283,7 @@ class TestCountForDocument:
 # cascade behavior
 # ─────────────────────────────────────────────────────────────
 
+
 class TestCascade:
     async def test_deleting_document_cascades_to_chunks(self, db: AsyncSession):
         user = await _persist(db, make_user())
@@ -290,11 +295,8 @@ class TestCascade:
         await db.flush()
 
         # bypass repository so we don't accidentally mask a cascade failure
-        remaining = await db.scalar(
-            select(DocumentChunk).where(DocumentChunk.document_id == doc.id)
-        )
+        remaining = await db.scalar(select(DocumentChunk).where(DocumentChunk.document_id == doc.id))
         assert remaining is None
-
 
     async def test_delete_document_does_not_null_chunk_fks(self, db: AsyncSession):
         """If passive_deletes is missing, SQLAlchemy tries SET document_id=NULL

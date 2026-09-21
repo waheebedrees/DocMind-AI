@@ -1,25 +1,27 @@
 
-from arq import create_pool, cron, Retry
+import asyncio
+import os
+import random
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+
+from arq import Retry, create_pool, cron
 from arq.connections import RedisSettings
 from arq.worker import JobExecutionFailed
-
-import asyncio
-import random
-from datetime import datetime, timedelta
-import sys 
-from pathlib import Path
 from dotenv import load_dotenv
+
+from backend.app.core.config import settings
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "backend"))
 
 load_dotenv("envs/dev.env")
-import os 
 
 os.environ['REDIS_HOST'] = 'localhost'
 
 
-from backend.app.core.config import settings
 
 MAX_TRIES = 3
 
@@ -110,18 +112,18 @@ async def producer():
         print(f"{j._queue_name}    {j.job_id[:8]}... status={status}")
 
 
-    print(f'\n waiting for result')
+    print('\n waiting for result')
     try:
         r1 = await j1.result(timeout=10)
         print(f"  say_hello  -> {r1}")
 
-    except BaseException as e:
+    except JobExecutionFailed as e:
         print(f" say_hello --> Error:{e}")
 
     try:
         r2 = await j2.result(timeout=10)
         print(f"  slow_task  -> {r2}")
-    except BaseException as e:
+    except JobExecutionFailed as e:
         print(f"  slow_task  -> ERROR: {e}")
 
     try:
@@ -132,7 +134,6 @@ async def producer():
             
  # ── Enqueue a delayed job (run 5 seconds from now) ──
     run_at = datetime.now() + timedelta(seconds=5)
-    j4 = await redis.enqueue_job("say_hello", "Later", _defer_until=run_at)
     print(
         f"\nDeferred job scheduled for {run_at.isoformat(timespec='seconds')}")
 

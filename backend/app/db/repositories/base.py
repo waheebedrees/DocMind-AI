@@ -1,7 +1,7 @@
 from typing import TypeVar
 from uuid import UUID
 
-from sqlalchemy import select, update, Select, func
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Base
@@ -69,7 +69,7 @@ class BaseRepository[ModelType: Base]:
         """
         instance = self.model(**kwargs)
         self.session.add(instance)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(instance)
         return instance
 
