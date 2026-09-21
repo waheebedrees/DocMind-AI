@@ -63,7 +63,7 @@ class UserRepository(BaseRepository[User]):
         user = User(email=email, password_hash=hash_password, is_active=is_active, is_verified=is_verified)
 
         self.session.add(user)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(user)
         return user
 

@@ -97,7 +97,7 @@ class BaseRepository[ModelType: Base]:
         Returns:
             int: total count
         """
-        stmt = select(self.model)    
+        stmt = select(self.model)
         result = await self.session.execute(stmt)
         return len(result.scalars().all())
 
@@ -114,20 +114,18 @@ class BaseRepository[ModelType: Base]:
         instance = await self.get_by_id(id)
         return instance is not None
 
-    async def delete(self, id:UUID) -> bool:
-        
+    async def delete(self, id: UUID) -> bool:
+
         instance = await self.get_by_id(id)
-        
+
         if instance:
             await self.session.delete(instance)
             await self.session.flush()
             return True
         return False
-    
-    
+
     def page(self, stmt: Select, *, limit: int, offset: int) -> Select:
         return stmt.limit(limit).offset(offset)
-
 
     async def total(self, stmt: Select) -> int:
         """Count rows matching a SELECT, ignoring ORDER BY / LIMIT / OFFSET."""
