@@ -48,5 +48,7 @@ class Document(TimestampMixin, Base):
     indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="documents")
-    chunks: Mapped["DocumentChunk"] = relationship(back_populates="document", cascade="all, delete-orphan")
     jobs: Mapped[list["ProcessingJob"]] = relationship(back_populates="document", cascade="all, delete-orphan")
+
+
+    chunks: Mapped[list["DocumentChunk"]] = relationship(back_populates="document", passive_deletes=True)
