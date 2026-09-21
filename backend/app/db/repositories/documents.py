@@ -71,7 +71,7 @@ class DocumentRepository(BaseRepository[Document]):
             raise NotFoundError(
                 "document Not found",
                 code="invalid_document_id ",
-            )        
+            )
         doc.parsed_key = parsed_key
         await self.session.flush()
 

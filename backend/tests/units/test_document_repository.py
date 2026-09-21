@@ -8,6 +8,7 @@ from app.models.enums import DocumentStatus
 from app.models.user import User
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import NotFoundError
+
 pytestmark = pytest.mark.unit
 
 
