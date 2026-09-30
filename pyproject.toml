@@ -3,22 +3,28 @@ name = "docmind-ai"
 version = "0.1.0"
 description = "DocMind AI — production-style RAG knowledge assistant"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.20.0",
     "arq[watch]>=0.25.0",
     "asyncpg>=0.31.0",
     "bcrypt>=5.0.0",
+    "chonkie>=1.7.0",
     "docling>=2.129.0",
     "email-validator>=2.3.0",
     "fastapi>=0.141.1",
     "pgvector>=0.5.0",
     "pydantic-settings>=2.15.0",
     "pyjwt>=2.14.0",
+    "python-magic-bin>=0.4.14; sys_platform == 'win32'",
     "redis>=8.1.0",
-    "sqlalchemy>=2.0.54",
+    "sentence-transformers>=6.1.0",
+    "sqlalchemy[asyncio]>=2.0.54",
     "structlog>=26.1.0",
+    "tiktoken>=0.14.0",
     "uvicorn[standard]>=0.53.0",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
 ]
 
 [dependency-groups]
@@ -33,21 +39,23 @@ dev = [
 
 [tool.uv]
 package = false
+environments = ["sys_platform == 'linux' or sys_platform == 'win32'"]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
 
 [tool.ruff]
 line-length = 150
 target-version = "py312"
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["backend/tests"]
-markers = [
-    "unit: fast tests with no external I/O",
-    "integration: tests that need a real database or redis",
-]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "C4", "SIM", "BLE", "ASYNC"]
-
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = [
@@ -62,4 +70,10 @@ extend-immutable-calls = [
     "fastapi.Security",
 ]
 
-
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["backend/tests"]
+markers = [
+    "unit: fast tests with no external I/O",
+    "integration: tests that need a real database or redis",
+]
