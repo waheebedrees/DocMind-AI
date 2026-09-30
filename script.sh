@@ -80,6 +80,12 @@ TOKEN=$(printf '%s' "${LOGIN_RESPONSE}" | jget access_token)
 echo "    token acquired (${#TOKEN} chars)"
 
 
+hr
+say "me ${EMAIL}"
+curl -s  "${API}/api/v1/auth/me" -H "Authorization: Bearer ${TOKEN}"
+
+
+
 # ================================================================
 # UPLOAD + PROCESS
 # ================================================================

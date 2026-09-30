@@ -259,7 +259,7 @@ def decode_token_payload(token: str) -> dict[str, Any]:
         ```
     """
     try:
-        payload = jwt.decode(token, key=_jwt_secret(), algorithm=_jwt_algorithm())
+        payload = jwt.decode(token, key=_jwt_secret(), algorithms=[_jwt_algorithm()])
         return payload
     except ExpiredSignatureError as e:
         detail = "Unauthorized, Token has expired"
