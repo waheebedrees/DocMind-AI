@@ -26,3 +26,8 @@ class NotFoundError(DocMindError):
 class ValidationError(DocMindError):
     status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
     code = "validation_error"
+
+
+class PermanentError(DocMindError):
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    code = "validation_error"

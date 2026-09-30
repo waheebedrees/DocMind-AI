@@ -126,6 +126,7 @@ class UserService:
             raise ValueError("User is inactive")
 
         # Optional, if you require verified users
+        #
         # if not user.is_verified:
         #     raise ValueError("User is not verified")
 

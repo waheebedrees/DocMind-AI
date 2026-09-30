@@ -12,8 +12,11 @@ from app.services.user_service import UserService
 # shard http bearer across full app
 security = HTTPBearer(auto_error=False)
 
+Credentials = Annotated[HTTPAuthorizationCredentials | None, Depends(security)]
+DbSession = Annotated[AsyncSession, Depends(get_db)]
 
-async def get_current_user_email(credentials: "Credentials") -> str:
+
+async def get_current_user_email(credentials: Credentials) -> str:
     """
     FastAPI dependency to get current user email from JWT token
 
@@ -45,20 +48,23 @@ async def get_current_user_email(credentials: "Credentials") -> str:
         detail = "Unauthorized, empty authentication token"
         raise get_exception_401(detail)
 
-    user_id, email = get_subject_for_token_type(token, "access")
+    _, email = get_subject_for_token_type(token, "access")
     return email
 
 
-def get_user_repository(db: "DbSession") -> UserRepository:
-    "provide user repository instance"
+CurrentUserEmail = Annotated[str, Depends(get_current_user_email)]
+
+
+def get_user_repository(db: DbSession) -> UserRepository:
     return UserRepository(db)
 
 
-def get_user_service(user_repo: "UserRepo") -> UserService:
+UserRepositoryDep = Annotated[UserRepository, Depends(get_user_repository)]
+
+
+def get_user_service(user_repo: UserRepositoryDep) -> UserService:
+    "provide user service instance"
     return UserService(user_repo)
 
 
-Credentials = Annotated[HTTPAuthorizationCredentials | None, Depends(security)]
-
-DbSession = Annotated[AsyncSession, Depends(get_db)]
-UserRepo = Annotated[UserRepository, Depends(get_user_repository)]
+UserServiceDep = Annotated[UserService, Depends(get_user_service)]

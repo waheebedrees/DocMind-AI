@@ -1,5 +1,6 @@
 from app.api.v1 import health as health_module
 from app.main import app
+from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
 
@@ -20,9 +21,10 @@ async def test_health_ok_when_all_dependencies_up(monkeypatch):
     monkeypatch.setattr(health_module, "_check_redis", _ok)
 
     # print(f"DEBUG: {sys.path}")
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get("/api/v1/health")
+    async with LifespanManager(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/api/v1/health")
 
     assert response.status_code == 200
     body = response.json()

@@ -1,3 +1,4 @@
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -15,6 +16,9 @@ log = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+
+    app.state.start_time = time.monotonic()
+
     log.info("app_starting", env=settings.environment, app=settings.app_name, db_url=settings.database_url, redis_url=settings.redis_url)
     try:
         yield

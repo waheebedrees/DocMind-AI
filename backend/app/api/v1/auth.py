@@ -1,11 +1,10 @@
-from fastapi import APIRouter, Body, Depends, Request, status
+from fastapi import APIRouter, Body, Request, status
 
 from app.core.auth import get_exception_401, get_exception_409
-from app.core.deps import get_user_service
+from app.core.deps import CurrentUserEmail, UserServiceDep
 from app.core.logging import get_logger
 from app.schemas.auth import Token
 from app.schemas.user import UserCreate, UserLogin, UserResponse
-from app.services.user_service import UserService
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -24,8 +23,8 @@ log = get_logger(__name__)
     },
 )
 async def refresh_token(
+    user_service: UserServiceDep,
     refresh_token: str = Body(..., embed=True),
-    user_service: UserService = Depends(get_user_service),
 ) -> Token:
     try:
         return await user_service.refresh(refresh_token)
@@ -35,7 +34,7 @@ async def refresh_token(
 
 
 @router.post("/register", response_model=UserResponse, status_code=201)
-async def register(request: Request, body: UserCreate, user_service: UserService = Depends(get_user_service)):
+async def register(request: Request, body: UserCreate, user_service: UserServiceDep):
     try:
         user = await user_service.register_user(body)
         return user
@@ -53,8 +52,25 @@ async def register(request: Request, body: UserCreate, user_service: UserService
         401: {"description": "Invalid credentials "},
     },
 )
-async def login(request: Request, body: UserLogin, user_service: UserService = Depends(get_user_service)):
+async def login(request: Request, body: UserLogin, user_service: UserServiceDep):
     try:
         return await user_service.authenticate_user(body.email, body.password)
     except ValueError as e:
         raise get_exception_401("invalid email or password") from e
+
+
+@router.get(
+    "/me",
+    status_code=status.HTTP_200_OK,
+    summary="get current user info",
+    responses={
+        200: {"description": " current user info"},
+        401: {"description": "Invalid email"},
+    },
+)
+async def me(email: CurrentUserEmail, user_service: UserServiceDep):
+
+    try:
+        return await user_service.get_user_by_email(email)
+    except ValueError as e:
+        raise get_exception_401("invalid user") from e

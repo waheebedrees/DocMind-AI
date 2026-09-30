@@ -81,3 +81,8 @@ class UserRepository(BaseRepository[User]):
             Optional[User]: updated user instance or None if not found
         """
         return await self.update(id=user_id, is_verified=True, is_active=True)
+
+
+def get_user_repository(db: "AsyncSession") -> UserRepository:
+    "provide user repository instance"
+    return UserRepository(db)

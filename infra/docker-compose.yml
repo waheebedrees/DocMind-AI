@@ -60,6 +60,7 @@ services:
       - ../backend/alembic:/app/backend/alembic   
       - ../alembic.ini:/app/alembic.ini:ro 
       - docling_cache:/root/.cache
+      - storage_data:/var/lib/docmind/storage
         
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/app"]
 
@@ -67,3 +68,4 @@ volumes:
   pg_data:
   redis_data:
   docling_cache:
+  storage_data:

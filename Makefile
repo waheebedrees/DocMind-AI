@@ -8,7 +8,8 @@ ARROW := $$'\xe2\x96\xb6'
 
 .PHONY: banner help up down clean logs rebuild restart shell ps \
         test test-docker lint lint-check fmt \
-        migrate upgrade downgrade history
+        migrate upgrade downgrade history \
+        current heads revision stamp db-shell db-tables db-version check-mgt
 banner:
 	@printf "\033[36m==> ENV=%s  file=%s\033[0m\n" "$(ENV)" "$(ENV_FILE)"
 	
@@ -70,3 +71,28 @@ downgrade: banner ## roll back one migration
 
 history: banner ## show migration history
 	$(COMPOSE) exec backend alembic history
+
+current: banner ## show the revision Alembic thinks is applied
+	$(COMPOSE) exec backend alembic current
+
+heads: banner ## show all migration heads (should be one)
+	$(COMPOSE) exec backend alembic heads
+
+revision: banner ## create empty revision (m='msg')
+	@test -n "$(m)" || (echo "usage: make revision m='message'"; exit 1)
+	$(COMPOSE) exec backend alembic revision -m "$(m)"
+
+
+stamp: banner ## stamp DB to a revision without running migrations (rev=base or hash)
+	@test -n "$(rev)" || (echo "usage: make stamp rev=base"; exit 1)
+	$(COMPOSE) exec backend alembic stamp "$(rev)"
+
+db-tables: banner ## list tables in the DB
+	$(COMPOSE) exec postgres sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -c "\dt"'
+
+db-version: banner ## read alembic_version directly from the DB
+	$(COMPOSE) exec postgres sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -c "SELECT * FROM alembic_version;"'
+
+
+check-mgt: banner ## verify DB matches models
+	$(COMPOSE) exec backend alembic check

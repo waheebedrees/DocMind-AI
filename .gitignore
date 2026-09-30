@@ -42,3 +42,8 @@ uploads/
 
 # Docker
 pg_data/
+
+./storage
+/docs
+./storage_demo
+storage_demo
