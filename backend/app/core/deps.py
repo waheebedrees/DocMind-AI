@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_exception_401, get_subject_for_token_type
 from app.db.repositories.user_repo import UserRepository
 from app.db.session import get_db
+from app.services.storage import BaseStorage, get_storage
 from app.services.user_service import UserService
 
 # shard http bearer across full app
@@ -68,3 +69,5 @@ def get_user_service(user_repo: UserRepositoryDep) -> UserService:
 
 
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
+
+StorageDep = Annotated[BaseStorage, Depends(get_storage)]

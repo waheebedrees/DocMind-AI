@@ -1,8 +1,46 @@
-.venv
-__pycache__
-*.pyc
-.pytest_cache
-.ruff_cache
-.mypy_cache
+# --- Python ---
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# --- Local env ---
 .env
-tests
+.env.*
+!.env.example
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# --- Repo-local artifacts not needed in image ---
+docs/
+demos/
+storage_demo/
+frontend/
+envs/
+scripts/
+*.md
+!README.md
+
+# --- Git ---
+.git/
+.gitignore
+.gitattributes
+
+# --- Docker ---
+infra/
+Makefile
+backend/tests/
+tests/
