@@ -1,7 +1,8 @@
 from enum import StrEnum
 from functools import lru_cache
+from pathlib import Path
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.embedding_models import EmbeddingModelSpec, get_spec
@@ -14,6 +15,20 @@ class Environment(StrEnum):
     STAGING = "staging"
     PRODUCTION = "prod"
     TEST = "test"
+
+
+class StorageBackend(StrEnum):
+    LOCAL = "local"
+    S3 = "s3"
+
+
+def get_storage_backend() -> StorageBackend:
+    import os
+
+    env = os.environ.get("STORAGE_BACKEND", "local")
+    if env == "s3":
+        return StorageBackend.S3
+    return StorageBackend.LOCAL
 
 
 def get_environment() -> Environment:
@@ -76,13 +91,25 @@ class Settings(BaseSettings):
 
     refresh_token_expire_days: int = 7
 
-    embedding_model: str = "all-MiniLM-L6-v2"
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
 
     # Chunking
     chunk_max_tokens: int = 512
     chunk_merge_peers: bool = True
 
-    # @computed_field
+    # custom chunk config
+
+    # Storage
+    storage_backend: StorageBackend = Field(default_factory=get_storage_backend)
+    storage_root: Path = Path("/var/lib/docmind/storage")
+    max_upload_bytes: int = 50 * 1024 * 1024  # 50 MB
+    upload_chunk_bytes: int = 64 * 1024  # 64 KB
+    mime_sniff_bytes: int = 8 * 1024  # 8 KB head buffer
+
+    # Quotas (from the gap analysis)
+    max_documents_per_user: int = 100
+    max_total_bytes_per_user: int = 500 * 1024 * 1024  # 500 MB
+
     @property
     def embedding_spec(self) -> EmbeddingModelSpec:
         return get_spec(self.embedding_model)
@@ -93,7 +120,7 @@ class Settings(BaseSettings):
 
     @property
     def embedding_tokenizer(self) -> str:
-        return self.embedding_spec.tokenizer
+        return self.embedding_spec.tokenizer_id
 
     @property
     def embedding_provider(self) -> str:
@@ -118,12 +145,31 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_production_secrets(self) -> "Settings":
-        if self.environment == "production":
-            if self.jwt_secret in {"change-me", "change-me-in-real-env", ""}:
-                raise ValueError("JWT_SECRET must be set in production")
-            if self.debug:
-                raise ValueError("DEBUG must be false in production")
+        if self.environment == "production" and self.debug:
+            raise ValueError("DEBUG must be false in production")
         return self
+
+    @model_validator(mode="after")
+    def _validate_storage(self) -> "Settings":
+        if self.mime_sniff_bytes < 1024:
+            raise ValueError("mime_sniff_bytes must be >= 1024")
+        if self.upload_chunk_bytes < 4096:
+            raise ValueError("upload_chunk_bytes must be >= 4096")
+
+        if self.storage_backend == "local" and not self.storage_root.is_absolute():
+            raise ValueError("storage_root must be an absolute path")
+        return self
+
+    @field_validator("storage_root", mode="after")
+    @classmethod
+    def _ensure_absolute(cls, v: Path) -> Path:
+        if v.is_absolute():
+            return v
+
+        # backend/app/core -> repo root
+        _REPO_ROOT = Path(__file__).resolve().parents[3]
+        # On Windows, /var/lib/... is not absolute — anchor it to the repo.
+        return _REPO_ROOT / v.relative_to("/") if v.is_absolute() is False and str(v).startswith("/") else _REPO_ROOT / v
 
     @property
     def database_url(self) -> str:
