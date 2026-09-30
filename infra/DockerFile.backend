@@ -1,26 +1,29 @@
-# syntax=docker/dockerfile:1.7
 
 # ---- builder ----
 FROM python:3.12-slim AS builder
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
+
+ENV UV_HTTP_TIMEOUT=900 \
+    UV_HTTP_RETRIES=15 \
+    UV_CONCURRENT_DOWNLOADS=1 \
     UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1
 
+    
 COPY --from=ghcr.io/astral-sh/uv:0.5.0 /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
 # Install deps first (cache-friendly)
 COPY pyproject.toml uv.lock* ./
+
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-dev --no-install-project
+    uv sync --frozen  -v --no-dev --no-install-project
 
 # Copy source
 COPY . .
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-dev
+    uv sync --frozen --no-dev
 
 # ---- runtime ----
 FROM python:3.12-slim AS runtime
@@ -29,8 +32,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH"
 
-RUN groupadd --system app && useradd --system --gid app --home /app app
+    
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libmagic1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system app \
+    && useradd --system --gid app --home /app app
+
+    
 WORKDIR /app
 COPY --from=builder --chown=app:app /app /app
 

@@ -17,6 +17,7 @@ dependencies = [
     "pydantic-settings>=2.15.0",
     "pyjwt>=2.14.0",
     "python-magic-bin>=0.4.14; sys_platform == 'win32'",
+    "python-magic>=0.4.27 ; sys_platform != 'win32'",
     "redis>=8.1.0",
     "sentence-transformers>=6.1.0",
     "sqlalchemy[asyncio]>=2.0.54",
@@ -25,6 +26,8 @@ dependencies = [
     "uvicorn[standard]>=0.53.0",
     "torch>=2.0.0",
     "torchvision>=0.15.0",
+    "aioboto3>=15.5.0",
+    "filetype>=1.2.0",
 ]
 
 [dependency-groups]
@@ -35,6 +38,8 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "httpx>=0.27.0",
     "asyncpg-stubs>=0.31.3",
+    "types-aiobotocore-s3>=3.9.1",
+    "asgi-lifespan>=2.1.0",
 ]
 
 [tool.uv]
@@ -77,3 +82,13 @@ markers = [
     "unit: fast tests with no external I/O",
     "integration: tests that need a real database or redis",
 ]
+
+[tool.mypy]
+python_version = "3.12"
+explicit_package_bases = true
+mypy_path = "backend"
+
+
+[[tool.mypy.overrides]]
+module = ["magic"]
+ignore_missing_imports = true
