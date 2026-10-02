@@ -92,6 +92,22 @@ def get_exception_403(detail: str) -> HTTPException:
     )
 
 
+def get_exception_404(detail: str) -> HTTPException:
+    """Build an HTTP 404 Forbidden exception.
+
+    Args:
+        detail: Human-readable error message.
+
+    Returns:
+        HTTPException: Exception with status code 404.
+    """
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=detail,
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 def get_exception_409(detail: str) -> HTTPException:
     """Build an HTTP 409 Conflict exception.
 

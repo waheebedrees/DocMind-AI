@@ -16,7 +16,7 @@ from app.db.redis import get_redis
 
 log = get_logger(__name__)
 
-router = APIRouter(tags=["health"])
+router = APIRouter(prefix="/health", tags=["health"])
 
 
 CheckStatus = Literal["ok", "error"]

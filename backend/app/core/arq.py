@@ -13,7 +13,13 @@ def get_arq_pool(request: Request) -> ArqRedis:
 
 async def create_arq_pool() -> ArqRedis:
     settings = get_settings()
-    return await create_pool(RedisSettings.from_dsn(settings.redis_url))
+    return await create_pool(
+        settings_=RedisSettings(
+            host=settings.redis_host or "redis",
+            port=settings.redis_port,
+            password=settings.redis_password,
+        )
+    )
 
 
 async def close_arq_pool(pool: ArqRedis) -> None:

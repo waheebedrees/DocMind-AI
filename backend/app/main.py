@@ -5,27 +5,32 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.middleware import APIMiddleware
 from app.api.v1.router import api_router
+from app.core.arq import create_arq_pool
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
 from app.db.redis import close_redis
 from app.db.session import engine
+from app.services.storage import build_storage
 
 log = get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-
-    app.state.start_time = time.monotonic()
-
-    log.info("app_starting", env=settings.environment, app=settings.app_name, db_url=settings.database_url, redis_url=settings.redis_url)
-    try:
-        yield
-    finally:
-        log.info("app_shutdown")
-        await engine.dispose()
-        await close_redis()
+    async with build_storage() as storage:
+        app.state.start_time = time.monotonic()
+        app.state.storage = storage
+        arq_pool = await create_arq_pool()
+        app.state.arq_pool = arq_pool
+        log.info("app_starting", env=settings.environment, app=settings.app_name, db_url=settings.database_url, redis_url=settings.redis_url)
+        try:
+            yield
+        finally:
+            log.info("app_shutdown")
+            await engine.dispose()
+            await close_redis()
 
 
 def create_app() -> FastAPI:
@@ -38,6 +43,7 @@ def create_app() -> FastAPI:
         redoc_url=None,
         docs_url=settings.docs_url,
     )
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allow_origins,
@@ -45,6 +51,8 @@ def create_app() -> FastAPI:
         allow_methods=settings.allow_methods,
         allow_headers=["Authorization", settings.api_key_headers],
     )
+
+    app.add_middleware(APIMiddleware)
     app.include_router(api_router, prefix=settings.api_v1_prefix)
 
     @app.get("/", tags=["root"])
