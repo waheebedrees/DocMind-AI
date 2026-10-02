@@ -29,7 +29,6 @@ docs/
 demos/
 storage_demo/
 frontend/
-envs/
 scripts/
 *.md
 !README.md
@@ -44,3 +43,6 @@ infra/
 Makefile
 backend/tests/
 tests/
+
+envs/*.env
+!envs/*.env.example

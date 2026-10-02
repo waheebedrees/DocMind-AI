@@ -21,10 +21,7 @@ __pycache__/
 .env
 .venv
 .env.*
-!.env.example
-./envs
-/envs
-*envs
+!
 
 .ruff_cache
 .pytest_cache 
@@ -47,3 +44,5 @@ pg_data/
 /docs
 ./storage_demo
 storage_demo
+envs/*.env
+!envs/*.env.example
