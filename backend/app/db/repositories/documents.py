@@ -15,7 +15,7 @@ class DocumentRepository(BaseRepository[Document]):
     def __init__(self, session: AsyncSession):
         super().__init__(Document, session)
 
-    async def get_for_user(self, document_id: UUID, user_id: UUID) -> Document | None:
+    async def get_for_user(self, user_id: UUID, document_id: UUID) -> Document | None:
 
         stmt = select(self.model).where(Document.id == document_id, Document.user_id == user_id)
         doc = await self.session.execute(stmt)
@@ -29,7 +29,7 @@ class DocumentRepository(BaseRepository[Document]):
     async def list_for_user(
         self, user_id: UUID, status: DocumentStatus | None = None, limit: int = 20, offset: int = 0
     ) -> tuple[list[Document], int]:
-        """_summary_
+        """
         list all document recodes for this user
 
         Args:
@@ -97,3 +97,21 @@ class DocumentRepository(BaseRepository[Document]):
             .limit(limit)
         )
         return list(rows.all())
+
+    async def set_index_results(
+        self,
+        document_id: UUID,
+        *,
+        chunk_count: int,
+        indexed_at: datetime,
+        page_count: int | None = None,
+    ) -> None:
+        doc = await self.get_by_id(document_id)
+        if doc is None:
+            return
+        meta = dict(doc.metadata_ or {})
+        meta["chunk_count"] = chunk_count
+        doc.metadata_ = meta
+        doc.indexed_at = indexed_at
+        if page_count is not None:
+            doc.page_count = page_count

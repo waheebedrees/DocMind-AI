@@ -51,3 +51,7 @@ class Document(TimestampMixin, Base):
     jobs: Mapped[list["ProcessingJob"]] = relationship(back_populates="document", cascade="all, delete-orphan")
 
     chunks: Mapped[list["DocumentChunk"]] = relationship(back_populates="document", passive_deletes=True)
+
+    @property
+    def chunk_count(self):
+        return self.metadata_.get("chunk_count", 0)

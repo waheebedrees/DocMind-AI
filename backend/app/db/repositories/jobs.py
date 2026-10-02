@@ -16,7 +16,7 @@ class JobRepository(BaseRepository[ProcessingJob]):
     async def create_enqueue(
         self,
         document_id: UUID,
-        stage: JobStage,
+        stage: JobStage = JobStage.EXTRACT,
         status: JobStatus = JobStatus.QUEUED,
     ) -> ProcessingJob:
 
@@ -26,7 +26,7 @@ class JobRepository(BaseRepository[ProcessingJob]):
 
         return job
 
-    async def make_running(
+    async def mark_running(
         self,
         job_id: UUID,
     ) -> ProcessingJob:
@@ -49,7 +49,7 @@ class JobRepository(BaseRepository[ProcessingJob]):
         await self.session.refresh(job)
         return job
 
-    async def make_done(self, job_id: UUID, details: dict | None = None) -> ProcessingJob:
+    async def mark_done(self, job_id: UUID, details: dict | None = None) -> ProcessingJob:
         job = await self.get_by_id(job_id)
         if job is None:
             raise NotFoundError(
@@ -66,7 +66,7 @@ class JobRepository(BaseRepository[ProcessingJob]):
         await self.session.refresh(job)
         return job
 
-    async def make_failed(self, job_id: UUID, error: str, details: dict | None = None) -> ProcessingJob:
+    async def mark_failed(self, job_id: UUID, error: str, details: dict | None = None) -> ProcessingJob:
         job = await self.get_by_id(job_id)
         if job is None:
             raise NotFoundError(
@@ -105,3 +105,24 @@ class JobRepository(BaseRepository[ProcessingJob]):
             )
         )
         return bool(await self.session.scalar(stmt))
+
+    async def recode_attempt(self, job_id: UUID, *, error: str, attempt: int) -> None:
+        """
+        Append  a Transient error with out changing status
+        used when ARQ retries Terminal failures go through make_failed
+        Args:
+            job_id (UUID): job UUid
+            error (str): error
+            attempt (int): number of attempt
+        """
+
+        job = await self.get_by_id(job_id)
+        if job is None:
+            raise NotFoundError(
+                "Job Not found",
+                code="invalid_job_id ",
+            )
+        history = list(job.details.get("attempt", []))
+        history.append({"attempt": attempt, "error": error})
+        job.details = {**job.details, "attempt": history}
+        await self.session.flush()

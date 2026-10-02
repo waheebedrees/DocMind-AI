@@ -1,5 +1,4 @@
 from collections.abc import Sequence
-from dataclasses import dataclass
 from uuid import UUID, uuid4
 
 from sqlalchemy import delete, func, insert, select
@@ -7,26 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.repositories.base import BaseRepository
 from app.models.chunk import DocumentChunk
-
-
-@dataclass(frozen=True)
-class ChunkRow:
-    """Flat input shape for bulk_insert — decoupled from ingestion.Chunk."""
-
-    chunk_index: int
-    text: str
-    page_number: int | None
-    section: str | None
-    token_count: int
-    doc_item_labels: tuple[str, ...]
-    embedding: list[float]
+from app.rag.chunk.docling_chunk import PreparedChunk
 
 
 class ChunkRepository(BaseRepository[DocumentChunk]):
     def __init__(self, session: AsyncSession):
         super().__init__(DocumentChunk, session)
 
-    async def bulk_insert(self, document_id: UUID, rows: Sequence[ChunkRow]):
+    async def bulk_insert(self, document_id: UUID, rows: Sequence[PreparedChunk]):
         if not rows:
             return 0
 
