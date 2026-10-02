@@ -35,11 +35,13 @@ def chunk_document(
             raise ChunkingError(f"Chunk {index} exceeds embedding limit: {token_count} > {limit}. Increase SAFETY_RESERVE.")
 
         yield PreparedChunk(
-            index=index,
-            text=text,
-            page_number=page_number,
+            chunk_index=index,
+            text=docling_chunk.text,
             token_count=token_count,
-            source_text=docling_chunk.text,
+            page_number=page_number,
+            section=" > ".join(meta.headings) if meta.headings else None,
+            embedding=[],
+            doc_item_labels=tuple(item.label.value for item in meta.doc_items),
         )
 
 
@@ -85,10 +87,12 @@ def chunk_with_splitter(
                 raise ChunkingError(f"Embedding chunk exceeds model limit: {model_token_count} > {spec.effective_max_tokens}")
 
             yield PreparedChunk(
-                index=output_index,
+                chunk_index=output_index,
                 text=embedding_text,
                 token_count=model_token_count,
                 page_number=page_number,
-                source_text=docling_chunk.text,
+                section=" > ".join(meta.headings) if meta.headings else None,
+                embedding=[],
+                doc_item_labels=tuple(item.label.value for item in meta.doc_items),
             )
             output_index += 1

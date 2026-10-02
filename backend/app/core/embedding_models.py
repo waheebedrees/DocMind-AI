@@ -15,6 +15,10 @@ class EmbeddingModelSpec:
     overlap_tokens: int = 32  # adjacent chunks share this many tokens
     # ← new: [CLS], [SEP] for BERT-family; 0 for OpenAI
     special_tokens: int = 2
+    cross_encoder_model = "cross-encoder/ms-marco-MiniLM-L6-v2"
+
+    query_prefix: str = ""
+    passage_prefix: str = ""
 
     def __post_init__(self) -> None:
         if self.max_tokens <= 0:
@@ -48,6 +52,8 @@ EMBEDDING_MODELS: dict[str, EmbeddingModelSpec] = {
             max_tokens=512,
             max_batch_size=64,
             reserve=64,
+            query_prefix="Represent this sentence for searching relevant passages: ",
+            passage_prefix="",
         ),
         EmbeddingModelSpec(
             name="sentence-transformers/all-MiniLM-L6-v2",
@@ -57,6 +63,8 @@ EMBEDDING_MODELS: dict[str, EmbeddingModelSpec] = {
             max_tokens=512,
             max_batch_size=64,
             reserve=64,
+            query_prefix="Represent this sentence for searching relevant passages: ",
+            passage_prefix="",
         ),
         EmbeddingModelSpec(
             name="BAAI/bge-base-en-v1.5",
@@ -66,6 +74,8 @@ EMBEDDING_MODELS: dict[str, EmbeddingModelSpec] = {
             max_tokens=512,
             max_batch_size=64,
             reserve=64,
+            query_prefix="Represent this sentence for searching relevant passages: ",
+            passage_prefix="",
         ),
         EmbeddingModelSpec(
             name="text-embedding-3-small",

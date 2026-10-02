@@ -21,11 +21,13 @@ class ChunkingError(Exception):
 
 @dataclass(frozen=True)
 class PreparedChunk:
-    index: int
+    chunk_index: int
     text: str
     token_count: int
-    source_text: str
     page_number: int | None
+    doc_item_labels: tuple[str, ...]
+    section: str | None
+    embedding: list[float] | None
 
 
 @lru_cache(maxsize=1)
