@@ -91,9 +91,9 @@ curl -s  "${API}/api/v1/auth/me" -H "Authorization: Bearer ${TOKEN}"
 # ================================================================
 hr
 say "Upload test document"
-TEST_FILE="/tmp/test-${RUN_ID}.txt"
+TEST_FILE="./docs/zerostrike_project (6).pdf"
+
 DOC_TITLE="Python history ${RUN_ID}"
-echo "Python was created by Guido van Rossum and first released in 1991. Run ${RUN_ID}." > "${TEST_FILE}"
 
 UPLOAD_RESPONSE=$(curl -s -X POST "${API}/api/v1/documents/upload" \
   -H "Authorization: Bearer ${TOKEN}" \
@@ -101,22 +101,23 @@ UPLOAD_RESPONSE=$(curl -s -X POST "${API}/api/v1/documents/upload" \
   -F "title=${DOC_TITLE}")
 
 echo "${UPLOAD_RESPONSE}" | pp
-DOC_ID=$(printf '%s' "${UPLOAD_RESPONSE}" | jget id)
+DOC_ID=$(printf '%s' "${UPLOAD_RESPONSE}" | jget document_id)
 [ -n "${DOC_ID}" ] || die "upload did not return an id"
 echo "    document_id=${DOC_ID}"
 
 hr
 say "Polling document status (max 60s)"
 STATUS=""
-for i in $(seq 1 60); do
+for i in $(seq .05 50); do
   DOC_JSON=$(curl -s "${API}/api/v1/documents/${DOC_ID}" \
     -H "Authorization: Bearer ${TOKEN}")
   STATUS=$(printf '%s' "${DOC_JSON}" | jget status)
   CHUNKS=$(printf '%s' "${DOC_JSON}" | jget chunk_count)
-  echo "    [${i}] status=${STATUS} chunks=${CHUNKS}"
+  current_stage=$(printf '%s' "${DOC_JSON}" | jget current_stage)
+  echo "    [${i}] status=${STATUS} chunks=${CHUNKS} stage=${current_stage}"
 
   case "${STATUS}" in
-    completed) echo "    document processed"; break ;;
+    indexed) echo "    document processed"; break ;;
     failed)
       echo "    document FAILED:"
       echo "${DOC_JSON}" | pp
@@ -124,18 +125,18 @@ for i in $(seq 1 60); do
       ;;
   esac
   sleep 1
+
 done
-[ "${STATUS}" = "completed" ] || die "document did not reach 'completed' in 60s"
-
-
 hr
-say "Qdrant collection state"
-curl -s "${QDRANT}/collections/${COLLECTION}" | pp
+say "delete"
+DELETE_RESP=$(curl -s -X DELETE "${API}/api/v1/documents/${DOC_ID}" \
+      -H "Authorization: Bearer ${TOKEN}")
+
+echo "$DELETE_RESP"
+[ "${STATUS}" = "indexed" ] || die "document did not reach 'indexed' in 60s"
 
 
-# ================================================================
-# CHAT — smoke test
-# ================================================================
+
 hr
 say "Chat: Who created Python?"
 RESP1=$(curl -s -X POST "${API}/api/v1/chat/" \

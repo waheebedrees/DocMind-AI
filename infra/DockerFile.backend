@@ -38,9 +38,13 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends libmagic1 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system app \
-    && useradd --system --gid app --home /app app
-
+    && useradd --system --gid app --home /app app \
+    && mkdir -p /var/lib/docmind/storage \
+    && chown -R app:app /var/lib/docmind \
+    && mkdir -p /app/.cache/huggingface \
+    && chown -R app:app /app/.cache/huggingface
     
+
 WORKDIR /app
 COPY --from=builder --chown=app:app /app /app
 

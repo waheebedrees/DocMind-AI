@@ -28,6 +28,7 @@ dependencies = [
     "torchvision>=0.15.0",
     "aioboto3>=15.5.0",
     "filetype>=1.2.0",
+    "python-multipart>=0.0.32",
 ]
 
 [dependency-groups]

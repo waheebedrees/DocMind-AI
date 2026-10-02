@@ -93,6 +93,8 @@ db-tables: banner ## list tables in the DB
 db-version: banner ## read alembic_version directly from the DB
 	$(COMPOSE) exec postgres sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -c "SELECT * FROM alembic_version;"'
 
-
 check-mgt: banner ## verify DB matches models
 	$(COMPOSE) exec backend alembic check
+
+worker-logs:  banner ## check worker
+	$(COMPOSE) logs -f worker
