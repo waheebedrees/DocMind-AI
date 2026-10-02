@@ -14,6 +14,7 @@ from app.services.storage.base import (
     _CHUNK,
     _HEAD_BYTES,
     _KEY_RE,
+    _PIPELINE_KEY_RE,
     _WRITE_BUFFER,
     BaseStorage,
     InvalidKey,
@@ -132,6 +133,7 @@ class LocalStorage(BaseStorage):
                 await asyncio.to_thread(unlink_quiet, tmp_path)
                 log.info("deduplicated_object", key=key, size_bytes=size)
                 return StoredObject(
+                    filename=filename,
                     key=key,
                     content_hash=content_hash,
                     mime_type=mime_type,
@@ -148,6 +150,7 @@ class LocalStorage(BaseStorage):
             log.info("stored_object", key=key, size_bytes=size, mime_type=mime_type)
             return StoredObject(
                 key=key,
+                filename=filename,
                 content_hash=content_hash,
                 mime_type=mime_type,
                 size_bytes=size,
@@ -200,3 +203,37 @@ class LocalStorage(BaseStorage):
         # Let rmdir's own emptiness check race safely against a
         # concurrent put_stream; an explicit iterdir probe cannot.
         await asyncio.to_thread(rmdir_quiet, path.parent)
+
+    async def put_bytes(self, key, data):
+        path = self._root / key
+        await asyncio.to_thread(path.parent.mkdir, parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        await asyncio.to_thread(tmp.write_bytes, data)
+        await asyncio.to_thread(os.replace, tmp, path)
+
+    async def get_bytes(self, key):
+        path = self._root / key
+        if not await asyncio.to_thread(path.exists):
+            raise ObjectNotFound(f"object not found: {key}")
+        return await asyncio.to_thread(path.read_bytes)
+
+    async def delete_raw(self, key: str) -> None:
+        """Delete an internal pipeline artifact. Key must match _PIPELINE_KEY_RE."""
+        if not _PIPELINE_KEY_RE.match(key):
+            raise InvalidKey(f"not a valid pipeline key: {key!r}")
+        path = (self._root / key).resolve()
+        if not path.is_relative_to(self._root_resolved):
+            raise InvalidKey(f"key escapes root: {key!r}")
+        await asyncio.to_thread(unlink_quiet, path)
+
+    def write_sync(self, key: str, data: bytes) -> None:
+        asyncio.run(self.put_bytes(key, data))
+
+    def read_sync(self, key: str) -> bytes:
+        return asyncio.run(self.get_bytes(key))
+
+    def __repr__(self):
+        return "<LocalStorage>"
+
+    def __str__(self):
+        return "<LocalStorage>"

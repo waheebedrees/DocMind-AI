@@ -22,6 +22,7 @@ from app.services.storage.base import (
     _CHUNK,
     _HEAD_BYTES,
     _KEY_RE,
+    _PIPELINE_KEY_RE,
     BaseStorage,
     InvalidKey,
     ObjectNotFound,
@@ -180,6 +181,7 @@ class S3Storage(BaseStorage):
                 log.info("deduplicated_object", key=key, size_bytes=size)
                 return StoredObject(
                     key=key,
+                    filename=filename,
                     content_hash=content_hash,
                     mime_type=mime_type,
                     size_bytes=size,
@@ -226,6 +228,7 @@ class S3Storage(BaseStorage):
             log.info("stored_object", key=key, size_bytes=size, mime_type=mime_type)
             return StoredObject(
                 key=key,
+                filename=filename,
                 content_hash=content_hash,
                 mime_type=mime_type,
                 size_bytes=size,
@@ -347,12 +350,11 @@ class S3Storage(BaseStorage):
     async def exists(self, key: str) -> bool:
         return await self._head_ok(self._s3_key(key))
 
-    async def delete(self, key: str) -> None:
-        # S3 delete is idempotent by spec — deleting a missing key is OK.
-        s3_key = self._s3_key(key)
+    async def delete_raw(self, key: str) -> None:
+        if not _PIPELINE_KEY_RE.match(key):
+            raise InvalidKey(f"not a valid pipeline key: {key!r}")
+        s3_key = f"{self._prefix}{key}" if self._prefix else key
         try:
             await self._client.delete_object(Bucket=self._bucket, Key=s3_key)
-        except Exception as e:  # noqa: BLE001
-            if error_code(e) in {"404", "NoSuchKey", "NotFound"}:
-                return  # S3 delete is idempotent; missing key is not an error
+        except Exception as e:
             raise StorageError(f"S3 delete_object failed: {e}") from e

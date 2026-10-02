@@ -15,6 +15,14 @@ _KEY_RE = re.compile(
     r"/[0-9a-f]{64}\.[a-z0-9]{1,5}\Z"
 )
 
+_PIPELINE_KEY_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"  # user_id
+    r"/_pipeline/"
+    # document_id
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    r"/[a-z_]+\.json\.gz\Z"
+)
+
 _CHUNK = 64 * 1024
 _WRITE_BUFFER = 4 * 1024 * 1024
 _HEAD_BYTES = 8192
@@ -49,6 +57,7 @@ class StoredObject:
     mime_type: str
     size_bytes: int
     deduplicated: bool
+    filename: str
     """True if this *user* already had an object with this hash.
 
     Dedup is per-user because user_id is part of the key. This is not
@@ -114,6 +123,20 @@ class BaseStorage(Protocol):
         """Remove the object. Idempotent: missing keys are not an error."""
         ...
 
+    async def put_bytes(self, key: str, data: bytes) -> None:
+        """Write raw bytes at an explicit key. for internal artifacts"""
+
+    async def get_bytes(self, key: str) -> bytes:
+        """Read the entire object as bytes. for internal artifacts"""
+
+    async def delete_raw(self, key: str) -> None:
+        """Trusted internal delete. Skips key validation. Idempotent.
+
+        For pipeline artifacts written via write_sync — those keys don't
+        match the user-key shape and would fail _KEY_RE enforcement.
+        """
+        ...
+
     def get(self, key: str) -> AsyncIterator[bytes]:
         """Return an async iterator over the object's bytes.
 
@@ -127,3 +150,7 @@ class BaseStorage(Protocol):
     def key_for(self, *, user_id: UUID, content_hash: str, extension: str) -> str:
         """Deterministic key derivation. Pure function."""
         ...
+
+    def write_sync(self, key: str, data: bytes) -> None: ...
+
+    def read_sync(self, key: str) -> bytes: ...
