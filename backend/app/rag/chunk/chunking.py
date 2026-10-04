@@ -7,8 +7,9 @@ from docling_core.types.doc import DoclingDocument
 
 from app.core.config import settings
 
-from .docling_chunk import ChunkingError, PreparedChunk, build_chunker, build_tokenizer, extract_heading_prefix, first_page_number
+from .docling_chunk import build_chunker, build_tokenizer, extract_heading_prefix, first_page_number
 from .splitter import EmbeddingTextSplitter
+from .types import ChunkingError, PreparedChunk
 
 
 def chunk_document(

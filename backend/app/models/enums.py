@@ -45,3 +45,25 @@ def enum_column(enum_cls: type[StrEnum], name: str) -> SAEnum:
         values_callable=lambda e: [m.value for m in e],
         length=32,
     )
+
+
+_STAGE_ORDER: tuple[JobStage, ...] = (
+    JobStage.EXTRACT,
+    JobStage.CLEAN,
+    JobStage.CHUNK,
+    JobStage.EMBED,
+    JobStage.INDEX,
+)
+
+_STAGE_SEQUENCE: tuple[tuple[JobStage, str], ...] = (
+    (JobStage.EXTRACT, "process_extract"),
+    (JobStage.CLEAN, "process_clean"),
+    (JobStage.CHUNK, "process_chunk"),
+    (JobStage.EMBED, "process_embed"),
+    (JobStage.INDEX, "process_index"),
+)
+_STAGE_INDEX = {stage: i for i, (stage, _) in enumerate(_STAGE_SEQUENCE)}
+_STAGE_TASK = dict(_STAGE_SEQUENCE)
+
+
+_STAGE_ORDER_VALUES = tuple(s.value for s in _STAGE_ORDER)

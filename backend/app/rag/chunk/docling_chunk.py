@@ -1,5 +1,4 @@
 import warnings
-from dataclasses import dataclass
 from functools import lru_cache
 
 import tiktoken
@@ -13,21 +12,6 @@ from app.core.config import settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
-
-
-class ChunkingError(Exception):
-    """Raised when a chunk exceeds the embedding model limit unexpectedly."""
-
-
-@dataclass(frozen=True)
-class PreparedChunk:
-    chunk_index: int
-    text: str
-    token_count: int
-    page_number: int | None
-    doc_item_labels: tuple[str, ...]
-    section: str | None
-    embedding: list[float] | None
 
 
 @lru_cache(maxsize=1)

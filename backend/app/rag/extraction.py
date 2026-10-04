@@ -1,3 +1,4 @@
+from functools import lru_cache
 from pathlib import Path
 
 from docling.datamodel.base_models import ConversionStatus, InputFormat
@@ -5,12 +6,13 @@ from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling_core.types.doc import DoclingDocument
 
+from app.core.exceptions import DocMindError
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-class DocumentExtractionError(Exception):
+class DocumentExtractionError(DocMindError):
     """Raised when extraction fails irrecoverably for a document."""
 
     def __init__(self, file_path: Path, errors: list):
@@ -19,6 +21,7 @@ class DocumentExtractionError(Exception):
         super().__init__(f"Extraction failed for {file_path}")
 
 
+@lru_cache(maxsize=1)
 def build_converter() -> DocumentConverter:
     """
     Construct a converter with formats explicitly allowed.
@@ -29,10 +32,10 @@ def build_converter() -> DocumentConverter:
 
     pdf_options = PdfPipelineOptions(
         generate_picture_images=False,
-        document_timeout=120.0,
+        document_timeout=220.0,
         do_ocr=False,
-        do_table_structure=True,
         do_code_enrichment=False,
+        do_table_structure=False,  # for smoke testing
         do_formula_enrichment=False,
     )
     return DocumentConverter(
@@ -67,6 +70,13 @@ def extract_document(
         raise FileNotFoundError(f"Document not found: {source_path.resolve()}")
 
     conv = build_converter()
+    logger.info(
+        "extraction_start",
+        extra={
+            "file": str(source_path),
+            "size_bytes": source_path.stat().st_size,
+        },
+    )
     result = conv.convert(source_path, raises_on_error=False)
 
     if result.status == ConversionStatus.SUCCESS:
