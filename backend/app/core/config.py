@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.embedding_models import EmbeddingModelSpec, get_spec
+from app.core.retrieval_settings import RetrievalSettings
 
 
 class Environment(StrEnum):
@@ -132,6 +133,7 @@ class Settings(BaseSettings):
 
     pipeline: PipelineSettings = Field(default_factory=PipelineSettings)
     job_settings: JobSettings = Field(default_factory=JobSettings)
+    retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
 
     @property
     def embedding_spec(self) -> EmbeddingModelSpec:
