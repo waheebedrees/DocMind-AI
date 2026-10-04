@@ -21,6 +21,3 @@ async def create_arq_pool() -> ArqRedis:
         )
     )
 
-
-async def close_arq_pool(pool: ArqRedis) -> None:
-    await pool.aclose()

@@ -92,7 +92,8 @@ class TestCreate:
             content_hash="h",
         )
 
-        found = await repo.get_for_user(doc.id, user.id)
+        found = await repo.get_for_user(user_id=user.id, document_id=doc.id)
+
         assert found is not None
         assert found.id == doc.id
 
@@ -117,14 +118,15 @@ class TestGetForUser:
         doc = await _persist(db, make_document(user_id=owner.id))
         repo = DocumentRepository(db)
 
-        result = await repo.get_for_user(doc.id, other.id)
+        result = await repo.get_for_user(document_id=doc.id, user_id=other.id)
+        
 
         assert result is None
 
     async def test_return_none_when_document_missing(self, db: AsyncSession):
         user = await _persist(db, make_user())
         repo = DocumentRepository(db)
-        result = await repo.get_for_user(uuid.uuid4(), user.id)
+        result = await repo.get_for_user(document_id=uuid.uuid4(), user_id=user.id)
         assert result is None
 
 

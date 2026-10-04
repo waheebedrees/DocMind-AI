@@ -2,7 +2,8 @@ import uuid
 
 import pytest
 from app.core.config import settings
-from app.db.repositories.chunks import ChunkRepository, ChunkRow
+from app.db.repositories.chunks import ChunkRepository
+from app.rag.chunk import PreparedChunk
 from app.models.chunk import DocumentChunk
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -23,8 +24,8 @@ def make_chunk_row(
     token_count: int = 10,
     doc_item_labels: tuple[str, ...] = (),
     embedding: list[float] | None = None,
-) -> ChunkRow:
-    return ChunkRow(
+) -> PreparedChunk:
+    return PreparedChunk(
         chunk_index=chunk_index,
         text=text,
         page_number=page_number,

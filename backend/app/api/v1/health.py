@@ -139,7 +139,7 @@ async def _check_redis() -> ComponentHealth:
         return ComponentHealth(status="error", detail=str(e))
 
 
-@router.get("/health", response_model=HealthResponse, status_code=status.HTTP_200_OK)
+@router.get("", response_model=HealthResponse, status_code=status.HTTP_200_OK)
 async def health(request: Request, response: Response, db: DbSession) -> HealthResponse:
     """Report the service's readiness to serve traffic.
 
