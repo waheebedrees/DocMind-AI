@@ -2,7 +2,7 @@ from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.embedding_models import EmbeddingModelSpec, get_spec
@@ -47,6 +47,28 @@ def get_environment() -> Environment:
             return Environment.TEST
         case _:
             return Environment.DEVELOPMENT
+
+
+class PipelineSettings(BaseModel):
+    """Per-stage version pins. Bump one to invalidate that stage and
+    everything downstream of it. Extract is the only stage that requires
+    re-parsing the source PDF; the rest reuse the prior artifact."""
+
+    extract_version: str = "1"  # docling config, parser swaps
+    clean_version: str = "1"  # ToC pruning, normalization rules
+    chunk_version: str = "1"  # splitter, contextualization
+    embed_version: str = "1"  # batching, prefix handling
+    index_version: str = "1"  # chunk row shape, label encoding
+
+
+class JobSettings(BaseModel):
+    max_jobs: int = 4
+    job_timeout: int = 600  # 10 min hard ceiling per stage
+    max_tries: int = 3
+    retry_delay: int = 10  # seconds; ARQ applies exponential backoff
+    keep_result: int = 3600  # 1 hour — Redis is transport, not truth
+    retry_jobs: bool = True
+    health_check_interval: int = 30
 
 
 class Settings(BaseSettings):
@@ -97,8 +119,6 @@ class Settings(BaseSettings):
     chunk_max_tokens: int = 512
     chunk_merge_peers: bool = True
 
-    # custom chunk config
-
     # Storage
     storage_backend: StorageBackend = Field(default_factory=get_storage_backend)
     storage_root: Path = Path("/var/lib/docmind/storage")
@@ -109,6 +129,9 @@ class Settings(BaseSettings):
     # Quotas (from the gap analysis)
     max_documents_per_user: int = 100
     max_total_bytes_per_user: int = 500 * 1024 * 1024  # 500 MB
+
+    pipeline: PipelineSettings = Field(default_factory=PipelineSettings)
+    job_settings: JobSettings = Field(default_factory=JobSettings)
 
     @property
     def embedding_spec(self) -> EmbeddingModelSpec:

@@ -15,10 +15,11 @@ class EmbeddingModelSpec:
     overlap_tokens: int = 32  # adjacent chunks share this many tokens
     # ← new: [CLS], [SEP] for BERT-family; 0 for OpenAI
     special_tokens: int = 2
-    cross_encoder_model = "cross-encoder/ms-marco-MiniLM-L6-v2"
 
+    cross_encoder_model = "cross-encoder/ms-marco-MiniLM-L6-v2"
     query_prefix: str = ""
     passage_prefix: str = ""
+    embed_timeout_s: float = 10.0
 
     def __post_init__(self) -> None:
         if self.max_tokens <= 0:
@@ -54,6 +55,7 @@ EMBEDDING_MODELS: dict[str, EmbeddingModelSpec] = {
             reserve=64,
             query_prefix="Represent this sentence for searching relevant passages: ",
             passage_prefix="",
+            embed_timeout_s=50,
         ),
         EmbeddingModelSpec(
             name="sentence-transformers/all-MiniLM-L6-v2",
@@ -65,6 +67,7 @@ EMBEDDING_MODELS: dict[str, EmbeddingModelSpec] = {
             reserve=64,
             query_prefix="Represent this sentence for searching relevant passages: ",
             passage_prefix="",
+            embed_timeout_s=50,
         ),
         EmbeddingModelSpec(
             name="BAAI/bge-base-en-v1.5",
@@ -76,6 +79,7 @@ EMBEDDING_MODELS: dict[str, EmbeddingModelSpec] = {
             reserve=64,
             query_prefix="Represent this sentence for searching relevant passages: ",
             passage_prefix="",
+            embed_timeout_s=50,
         ),
         EmbeddingModelSpec(
             name="text-embedding-3-small",
@@ -87,6 +91,7 @@ EMBEDDING_MODELS: dict[str, EmbeddingModelSpec] = {
             max_batch_size=2048,
             max_batch_tokens=300_000,
             reserve=16,
+            embed_timeout_s=10,
         ),
         EmbeddingModelSpec(
             name="text-embedding-3-large",
@@ -98,6 +103,7 @@ EMBEDDING_MODELS: dict[str, EmbeddingModelSpec] = {
             max_batch_size=2048,
             max_batch_tokens=300_000,
             reserve=16,
+            embed_timeout_s=10,
         ),
     ]
 }

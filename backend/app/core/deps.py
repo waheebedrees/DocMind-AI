@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.arq import get_arq_pool
 from app.core.auth import get_exception_401, get_subject_for_token_type
+from app.db.repositories.chunks import ChunkRepository
 from app.db.repositories.documents import DocumentRepository
 from app.db.repositories.jobs import JobRepository
 from app.db.repositories.user_repo import UserRepository
@@ -96,15 +97,19 @@ def get_storage(request: Request) -> BaseStorage:
 
 
 def get_document_repository(db: "DbSession") -> DocumentRepository:
-    return DocumentRepository(db)
+    return DocumentRepository(session=db)
 
 
-def get_document_service(document_repo: "DocumentRepositoryDep", job_repo: "JobRepositoryDep") -> DocumentService:
-    return DocumentService(document_repo, job_repo)
+def get_chunk_repository(db: "DbSession") -> ChunkRepository:
+    return ChunkRepository(session=db)
 
 
 def get_job_repo(db: "DbSession") -> JobRepository:
-    return JobRepository(db)
+    return JobRepository(session=db)
+
+
+def get_document_service(document_repo: "DocumentRepositoryDep", job_repo: "JobRepositoryDep", chunk_repo: "ChunkRepositoryDep") -> DocumentService:
+    return DocumentService(document_repo, job_repo=job_repo, chunk_repo=chunk_repo)
 
 
 # shard http bearer across full app
@@ -115,7 +120,7 @@ DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 
 CurrentUserEmail = Annotated[str, Depends(get_current_user_email)]
-CurrentUserId = Annotated[str, Depends(get_current_user_id)]
+CurrentUserId = Annotated[UUID, Depends(get_current_user_id)]
 StorageDep = Annotated[BaseStorage, Depends(get_storage)]
 ArqPooleDep = Annotated[ArqRedis, Depends(get_arq_pool)]
 
@@ -124,4 +129,5 @@ UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 
 JobRepositoryDep = Annotated[JobRepository, Depends(get_job_repo)]
 DocumentRepositoryDep = Annotated[DocumentRepository, Depends(get_document_repository)]
+ChunkRepositoryDep = Annotated[ChunkRepository, Depends(get_chunk_repository)]
 DocumentServiceDep = Annotated[DocumentService, Depends(get_document_service)]
