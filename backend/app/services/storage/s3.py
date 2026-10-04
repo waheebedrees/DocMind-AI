@@ -88,6 +88,7 @@ class S3Storage(BaseStorage):
 
     def _s3_key(self, key: str) -> str:
         """Logical key → physical S3 object key, after validation."""
+        
         if not _KEY_RE.match(key):
             raise InvalidKey(f"Malformed key: {key!r}")
         return f"{self._prefix}{key}"
@@ -369,3 +370,10 @@ class S3Storage(BaseStorage):
                 if prefix and key.startswith(prefix):
                     key = key[len(prefix) :]
                 yield key, obj["LastModified"]
+
+    async def delete(self, key: str) -> None:
+        s3_key = self._s3_key(key)  # validates + applies prefix
+        try:
+            await self._client.delete_object(Bucket=self._bucket, Key=s3_key)
+        except Exception as e:
+            raise StorageError(f"S3 delete_object failed: {e}") from e

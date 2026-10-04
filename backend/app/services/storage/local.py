@@ -16,6 +16,7 @@ from app.services.storage.base import (
     _KEY_RE,
     _PIPELINE_KEY_RE,
     _WRITE_BUFFER,
+    validate_key,
     BaseStorage,
     InvalidKey,
     ObjectNotFound,
@@ -63,8 +64,7 @@ class LocalStorage(BaseStorage):
 
         `root / key` silently discards the root when the key is absolute/
         """
-        if not _KEY_RE.match(key):
-            raise InvalidKey(f" malformed key: {key!r}")
+        validate_key(key)
 
         path = (self._root / key).resolve()
         if not path.is_relative_to(self._root_resolved):
@@ -197,14 +197,8 @@ class LocalStorage(BaseStorage):
     async def exists(self, key: str) -> bool:
         """True if the object exists. Returns False for keys outside the
         user namespace (e.g. cache keys that don't match _KEY_RE)."""
-        try:
-            path = self._resolve(key)
-        except InvalidKey:
-            # Cache and other internal namespaces don't match _KEY_RE.
-            # Fall back to a direct path check.
-            path = (self._root / key).resolve()
-            if not path.is_relative_to(self._root_resolved):
-                return False
+    
+        path = self._resolve(key)
         return await asyncio.to_thread(path.is_file)
 
     async def delete(self, key: str) -> None:

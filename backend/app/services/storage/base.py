@@ -81,6 +81,12 @@ class StoredObject:
     """
 
 
+
+def validate_key(key: str) -> None:
+    """Raise InvalidKey if the key isn't a valid user or pipeline key."""
+    if not (_KEY_RE.match(key) or _PIPELINE_KEY_RE.match(key)):
+        raise InvalidKey(f"invalid storage key: {key!r}")
+
 @runtime_checkable
 class BaseStorage(Protocol):
     """Async object storage.
