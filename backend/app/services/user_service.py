@@ -125,11 +125,6 @@ class UserService:
         if not user.is_active:
             raise ValueError("User is inactive")
 
-        # Optional, if you require verified users
-        #
-        # if not user.is_verified:
-        #     raise ValueError("User is not verified")
-
         return create_token_pair(user_id=str(user.id), email=user.email)
 
 

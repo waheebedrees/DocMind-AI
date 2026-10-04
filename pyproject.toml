@@ -46,6 +46,7 @@ dev = [
 [tool.uv]
 package = false
 environments = ["sys_platform == 'linux' or sys_platform == 'win32'"]
+override-dependencies = ["opencv-python-headless"]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

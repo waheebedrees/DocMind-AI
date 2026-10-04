@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.repositories.base import BaseRepository
 from app.models.chunk import DocumentChunk
-from app.rag.chunk.docling_chunk import PreparedChunk
+from app.rag.chunk import PreparedChunk
 
 
 class ChunkRepository(BaseRepository[DocumentChunk]):

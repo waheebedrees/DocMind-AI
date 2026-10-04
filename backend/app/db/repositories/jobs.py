@@ -1,6 +1,7 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
@@ -44,7 +45,7 @@ class JobRepository(BaseRepository[ProcessingJob]):
             )
 
         job.status = JobStatus.RUNNING
-        job.started_at = func.now()
+        job.started_at = datetime.now(UTC)
         await self.session.flush()
         await self.session.refresh(job)
         return job
@@ -58,7 +59,7 @@ class JobRepository(BaseRepository[ProcessingJob]):
             )
 
         job.status = JobStatus.DONE
-        job.finished_at = func.now()
+        job.finished_at = datetime.now(UTC)
 
         if details:
             job.details = {**(job.details or {}), **details}
@@ -74,7 +75,7 @@ class JobRepository(BaseRepository[ProcessingJob]):
                 code="invalid_job_id ",
             )
         job.status = JobStatus.FAILED
-        job.finished_at = func.now()
+        job.finished_at = datetime.now(UTC)
         job.details = {**(job.details or {}), "error": error, **(details or {})}
         await self.session.flush()
         await self.session.refresh(job)
@@ -97,7 +98,7 @@ class JobRepository(BaseRepository[ProcessingJob]):
         return latest
 
     async def has_active_job(self, document_id: UUID) -> bool:
-
+        """True if the document has any QUEUED or RUNNING job."""
         stmt = select(
             exists().where(
                 ProcessingJob.document_id == document_id,
@@ -106,7 +107,7 @@ class JobRepository(BaseRepository[ProcessingJob]):
         )
         return bool(await self.session.scalar(stmt))
 
-    async def recode_attempt(self, job_id: UUID, *, error: str, attempt: int) -> None:
+    async def record_attempt(self, job_id: UUID, *, error: str, attempt: int) -> None:
         """
         Append  a Transient error with out changing status
         used when ARQ retries Terminal failures go through make_failed
@@ -126,3 +127,75 @@ class JobRepository(BaseRepository[ProcessingJob]):
         history.append({"attempt": attempt, "error": error})
         job.details = {**job.details, "attempt": history}
         await self.session.flush()
+
+    async def list_queued(
+        self,
+        *,
+        cutoff: datetime,
+        status: JobStatus,
+    ) -> list[ProcessingJob]:
+        """Jobs in the given status older than cutoff."""
+        result = await self.session.execute(
+            select(ProcessingJob)
+            .where(
+                ProcessingJob.status == status,
+                ProcessingJob.created_at < cutoff,
+            )
+            .order_by(ProcessingJob.created_at)
+        )
+        return list(result.scalars().all())
+
+    async def last_completed(
+        self,
+        document_id: UUID,
+    ) -> ProcessingJob | None:
+        """Most recent DONE job for a document, or None."""
+        stmt = (
+            select(ProcessingJob)
+            .where(
+                ProcessingJob.status == JobStatus.DONE,
+                ProcessingJob.document_id == document_id,
+            )
+            .order_by(ProcessingJob.finished_at.desc())
+            .limit(1)
+        )
+        return await self.session.scalar(stmt)
+
+    async def list_stuck(
+        self,
+        *,
+        queued_before: datetime,
+        running_before: datetime,
+    ) -> list[ProcessingJob]:
+        """Jobs whose current status has been held past the expected time.
+
+        QUEUED jobs older than ``queued_before`` were created but never picked
+        up — the enqueue step was lost (worker crash, Redis blip).
+
+        RUNNING jobs whose ``started_at`` is older than ``running_before``
+        were picked up but never finished — the worker died mid-stage.
+        """
+        stmt = select(ProcessingJob).where(
+            or_(
+                and_(
+                    ProcessingJob.status == JobStatus.QUEUED,
+                    ProcessingJob.created_at < queued_before,
+                ),
+                and_(
+                    ProcessingJob.status == JobStatus.RUNNING,
+                    ProcessingJob.started_at < running_before,
+                ),
+            )
+        )
+        rows = await self.session.scalars(stmt)
+        return list(rows.all())
+
+    async def latest_by_document(self, document_id: UUID) -> ProcessingJob | None:
+        """Most recent job for a document, regardless of stage or status.
+
+        Used by the dedup path in DocumentService.get_or_create: when an
+        upload hits an existing Document row, we want to hand the caller the
+        job that is (or was) actually processing that document, not None.
+        """
+        stmt = select(ProcessingJob).where(ProcessingJob.document_id == document_id).order_by(ProcessingJob.created_at.desc()).limit(1)
+        return await self.session.scalar(stmt)

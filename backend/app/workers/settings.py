@@ -29,19 +29,23 @@ async def scheduled_heartbeat(ctx) -> str:
     return ts
 
 
+job_settings = settings.job_settings
+
+
 class WorkerSettings:
     redis_settings = RedisSettings(
         host=settings.redis_host or "redis",
         port=settings.redis_port,
         password=settings.redis_password,
     )
-    max_jobs = 4
-    job_timeout = 600  # 10 min hard ceiling per stage
-    max_tries = 3
-    retry_delay = 10  # seconds; ARQ applies exponential backoff
-    keep_result = 3600  # 1 hour — Redis is transport, not truth
-    retry_jobs = True
-    health_check_interval = 30
+
+    max_jobs = job_settings.max_jobs
+    job_timeout = job_settings.job_timeout
+    max_tries = job_settings.max_tries
+    retry_delay = job_settings.retry_delay
+    keep_result = job_settings.keep_result
+    retry_jobs = job_settings.retry_jobs
+    health_check_interval = job_settings.health_check_interval
 
     on_shutdown = shutdown
     on_startup = startup

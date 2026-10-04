@@ -36,6 +36,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libmagic1 \
+    libgl1 \
+    libglib2.0-0 \
+    libxcb1 \
+    libx11-6 \
+    libxext6 \
+    libsm6 \
+    libice6 \
+    libfontconfig1 \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system app \
     && useradd --system --gid app --home /app app \
@@ -45,6 +54,8 @@ RUN apt-get update \
     && chown -R app:app /app/.cache/huggingface
     
 
+
+    
 WORKDIR /app
 COPY --from=builder --chown=app:app /app /app
 

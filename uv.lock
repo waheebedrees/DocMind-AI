@@ -8,6 +8,9 @@ supported-markers = [
     "sys_platform == 'linux' or sys_platform == 'win32'",
 ]
 
+[manifest]
+overrides = [{ name = "opencv-python-headless" }]
+
 [[package]]
 name = "accelerate"
 version = "1.15.0"

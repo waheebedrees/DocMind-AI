@@ -184,9 +184,6 @@ class LocalStorage(BaseStorage):
 
         return self._iter_file(path, key)
 
-    async def exists(self, key: str) -> bool:
-        return await asyncio.to_thread(self._resolve(key).is_file)
-
     @asynccontextmanager
     async def materialize(self, key: str) -> AsyncIterator[Path]:
         path = self._resolve(key)
@@ -196,6 +193,19 @@ class LocalStorage(BaseStorage):
         # No copy for LocalStorage — the real path. Read-only by
         # contract: writing through it corrupts content addressing.
         yield path
+
+    async def exists(self, key: str) -> bool:
+        """True if the object exists. Returns False for keys outside the
+        user namespace (e.g. cache keys that don't match _KEY_RE)."""
+        try:
+            path = self._resolve(key)
+        except InvalidKey:
+            # Cache and other internal namespaces don't match _KEY_RE.
+            # Fall back to a direct path check.
+            path = (self._root / key).resolve()
+            if not path.is_relative_to(self._root_resolved):
+                return False
+        return await asyncio.to_thread(path.is_file)
 
     async def delete(self, key: str) -> None:
         path = self._resolve(key)
@@ -226,14 +236,12 @@ class LocalStorage(BaseStorage):
             raise InvalidKey(f"key escapes root: {key!r}")
         await asyncio.to_thread(unlink_quiet, path)
 
-    def write_sync(self, key: str, data: bytes) -> None:
-        asyncio.run(self.put_bytes(key, data))
-
-    def read_sync(self, key: str) -> bytes:
-        return asyncio.run(self.get_bytes(key))
-
-    def __repr__(self):
-        return "<LocalStorage>"
-
-    def __str__(self):
-        return "<LocalStorage>"
+    async def list_keys(self) -> AsyncIterator[tuple[str, float]]:
+        root = self._root_resolved
+        tmp_dir = self._tmp.resolve()
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            if path.resolve().is_relative_to(tmp_dir):
+                continue  # skip in-flight uploads
+            yield str(path.relative_to(root)), path.stat().st_mtime

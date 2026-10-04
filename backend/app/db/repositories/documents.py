@@ -19,7 +19,6 @@ class DocumentRepository(BaseRepository[Document]):
 
         stmt = select(self.model).where(Document.id == document_id, Document.user_id == user_id)
         doc = await self.session.execute(stmt)
-
         return doc.scalar()
 
     async def find_by_content_hash(self, user_id: UUID, content_hash: str) -> Document | None:
@@ -88,7 +87,6 @@ class DocumentRepository(BaseRepository[Document]):
         return int(result or 0)
 
     async def find_pending_without_job(self, user_id: UUID, older_than_seconds: int = 12, limit: int = 20) -> list[Document]:
-
         cutoff = datetime.now(UTC) - timedelta(seconds=older_than_seconds)
         active = select(ProcessingJob.id).where(ProcessingJob.document_id == Document.id, ProcessingJob.status.in_(["queued", "running"])).exists()
         rows = await self.session.scalars(
@@ -103,7 +101,7 @@ class DocumentRepository(BaseRepository[Document]):
         document_id: UUID,
         *,
         chunk_count: int,
-        indexed_at: datetime,
+        indexed_at: datetime | None,
         page_count: int | None = None,
     ) -> None:
         doc = await self.get_by_id(document_id)
@@ -115,3 +113,41 @@ class DocumentRepository(BaseRepository[Document]):
         doc.indexed_at = indexed_at
         if page_count is not None:
             doc.page_count = page_count
+
+    async def list_processing_older_than(
+        self,
+        cutoff: datetime,
+    ) -> list[Document]:
+        """PROCESSING documents last updated before the cutoff."""
+        stmt = (
+            select(Document)
+            .where(
+                Document.status == DocumentStatus.PROCESSING,
+                Document.updated_at < cutoff,
+            )
+            .order_by(Document.updated_at)
+        )
+        rows = await self.session.scalars(stmt)
+        return list(rows.all())
+
+    async def reconcile_indexed(
+        self,
+        document_id: UUID,
+        last_job: ProcessingJob,
+    ) -> None:
+        """Mark a document INDEXED based on its final completed job.
+
+        Used by the sweeper when a document is stuck in PROCESSING but the
+        index stage already finished — the state transition that would have
+        flipped it to INDEXED never committed.
+        """
+        doc = await self.get_by_id(document_id)
+        if doc is None:
+            return
+        doc.status = DocumentStatus.INDEXED
+        doc.indexed_at = last_job.finished_at or datetime.now(UTC)
+        doc.metadata_ = {
+            **(doc.metadata_ or {}),
+            "chunk_count": (last_job.details or {}).get("inserted", 0),
+        }
+        await self.session.flush()

@@ -1,195 +1,271 @@
+"""Ingestion pipeline.
+
+This module owns the ingestion half of DocMind: the ARQ task wrappers
+that drive a document through extract => clean => chunk => embed =? index,
+plus the ``Ingester`` service that enforces the legal state transitions
+at each step.
+"""
+
 import asyncio
-import threading
-from functools import lru_cache
-from typing import Protocol, runtime_checkable
+from collections.abc import Sequence
+from datetime import UTC, datetime
+from pathlib import Path
+from uuid import UUID
+
+from docling_core.types.doc import DoclingDocument
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.decorator import with_async_backoff
+from app.core.exceptions import DocumentNotFound, InvalidTransition, JobAlreadyDone, JobAlreadyFailed, JobNotFound, TransientEmbeddingError
 from app.core.logging import get_logger
+from app.db.repositories.chunks import ChunkRepository, PreparedChunk
+from app.db.repositories.documents import DocumentRepository
+from app.db.repositories.jobs import JobRepository
+from app.models.enums import DocumentStatus, JobStage, JobStatus
+from app.models.processing_job import ProcessingJob
+from app.rag.chunk.chunking import chunk_with_splitter
+from app.rag.cleaning import clean_document
+from app.rag.embed import embed_in_batches
+from app.rag.extraction import extract_document
+from app.services.llm_clients import get_embedder
 
 log = get_logger(__name__)
 
 
-class PipelineError(Exception):
-    """ "Base class for Rag pipeline"""
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
 
 
-class EmbeddingError(PipelineError):
-    """Base class for embedding failures."""
-
-
-class TransientEmbeddingError(EmbeddingError):
-    """Rate limit, network, timeout — retry."""
-
-
-class PermanentEmbeddingError(EmbeddingError):
-    """Invalid input, wrong dimension, model not found — do not retry."""
-
-
-@runtime_checkable
-class EmbeddingClient(Protocol):
-    """Provider-agnostic embedding interface.
-
-    Implementations must:
-      * Return one vector per input text, in order.
-      * Use the correct instruction prefix for queries vs passages.
-      * Normalize vectors for cosine similarity.
-      * Raise TransientEmbeddingError on retryable failures.
+class Ingester:
+    """Enforce the document/job state machine for the ingestion pipeline.
+    The class wraps an ``AsyncSession`` and never commits. Callers own
+    transaction boundaries; every method here ends in ``flush()`` so the
+    caller can inspect results before deciding to commit.
     """
 
-    @property
-    def dimension(self) -> int: ...
+    def __init__(self, session: AsyncSession):
+        self._session = session
+        self._jobs = JobRepository(session)
+        self._documents = DocumentRepository(session)
+        self._chunks = ChunkRepository(session)
 
-    @property
-    def max_batch_size(self) -> int: ...
+    @staticmethod
+    def extract_document(source: str | Path) -> DoclingDocument:
+        """Parse a document into a ``DoclingDocument``"""
+        return extract_document(source)
 
-    async def embed_passages(self, texts: list[str]) -> list[list[float]]:
-        """Embed document chunks. No instruction prefix."""
-        ...
+    @staticmethod
+    def clean_document(dl_doc: DoclingDocument) -> dict[str, int]:
+        """Apply cleaning rules to a parsed document, in place."""
+        return clean_document(dl_doc)
 
-    async def embed_query(self, text: str) -> list[float]:
-        """Embed a single search query. Uses the query prefix."""
-        ...
+    @staticmethod
+    def chunk_document(dl_doc: DoclingDocument) -> list[PreparedChunk]:
+        """Split a cleaned document into embeddable chunks."""
+        return list(chunk_with_splitter(document=dl_doc))
 
+    async def get_job(self, job_id: UUID) -> ProcessingJob | None:
+        """Fetch a job by ID, or ``None`` if it doesn't exist."""
+        return await self._jobs.get_by_id(job_id)
 
-async def embed_in_batches(
-    client: EmbeddingClient,
-    texts: list[str],
-    *,
-    concurrency: int = 4,
-) -> list[list[float]]:
-    """Embed texts in batches with bounded concurrency and retry.
-
-    Preserves input order in the output.
-    """
-    if not texts:
-        return []
-
-    batch_size = client.max_batch_size
-    batches = [texts[i : i + batch_size] for i in range(0, len(texts), batch_size)]
-    semaphore = asyncio.Semaphore(concurrency)
-
-    async def one_batch(batch: list[str], idx: int) -> list[list[float]]:
-        async with semaphore:
-            return await _embed_with_retry(client, batch, batch_index=idx)
-
-    log.info(
-        "embedding_started",
-        total_texts=len(texts),
-        batches=len(batches),
-        batch_size=batch_size,
-        concurrency=concurrency,
-    )
-
-    results = await asyncio.gather(*[one_batch(b, i) for i, b in enumerate(batches)])
-
-    flat = [vec for batch in results for vec in batch]
-    if len(flat) != len(texts):
-        raise RuntimeError(f"embedding count mismatch: {len(flat)} vectors for {len(texts)} texts")
-    return flat
-
-
-@with_async_backoff(max_retries=4, initial_delay=1.0, backoff_factor=2.0, max_delay=30.0)
-async def _embed_with_retry(
-    client: EmbeddingClient,
-    batch: list[str],
-    *,
-    batch_index: int,
-) -> list[list[float]]:
-    try:
-        return await client.embed_passages(batch)
-    except Exception as e:
-        log.warning("embedding_retry", batch_index=batch_index, e=str(e))
-        raise TransientEmbeddingError("embedding failed") from e
-
-
-class HuggingFaceClient:
-    def __init__(
-        self,
-        model_name: str,
-        *,
-        dimension: int,
-        max_batch_size: int,
-        query_prefix: str = "",
-        passage_prefix: str = "",
-        device: str = "cpu",
-    ) -> None:
-        self._model_name = model_name
-        self._dimension = dimension
-        self._max_batch_size = max_batch_size
-        self._query_prefix = query_prefix
-        self._passage_prefix = passage_prefix
-        self._device = device
-
-        self._model = None  # lazy
-        self._lock = threading.Lock()
-
-    @property
-    def dimension(self) -> int:
-        return self._dimension
-
-    @property
-    def max_batch_size(self) -> int:
-        return self._max_batch_size
-
-    async def embed_passages(self, texts: list[str]) -> list[list[float]]:
-        return await asyncio.to_thread(self._embed_sync, texts, self._passage_prefix)
-
-    async def embed_query(self, text: str) -> list[float]:
-        vectors = await asyncio.to_thread(self._embed_sync, [text], self._query_prefix)
-        return vectors[0]
-
-    def _load(self):
-        if self._model is None:
-            log.info("loading_embedding_model", model=self._model_name)
-            from sentence_transformers import SentenceTransformer
-
-            self._model = SentenceTransformer(self._model_name, device=self._device)
-            log.info("embedding_model_loaded", model=self._model_name)
-        return self._model
-
-    def _embed_sync(self, texts: list[str], prefix: str) -> list[list[float]]:
-        if not texts:
-            return []
-
-        prepared = [f"{prefix}{t}" if prefix else t for t in texts]
-
-        try:
-            with self._lock:
-                model = self._load()
-                vectors = model.encode(
-                    prepared,
-                    batch_size=min(len(prepared), self._max_batch_size),
-                    normalize_embeddings=True,
-                    convert_to_numpy=True,
-                    show_progress_bar=False,
-                )
-        except RuntimeError as exc:
-            raise TransientEmbeddingError(f"local embed failed: {exc}") from exc
-        except Exception as exc:
-            raise PermanentEmbeddingError(f"local embed error: {exc}") from exc
-
-        out = vectors.tolist()
-        for v in out:
-            if len(v) != self._dimension:
-                raise PermanentEmbeddingError(f"dimension mismatch: model returned {len(v)}, expected {self._dimension}")
-        return out
-
-
-@lru_cache
-def get_embedder() -> EmbeddingClient:
-    spec = settings.embedding_spec
-
-    if spec.provider == "huggingface":
-        return HuggingFaceClient(
-            spec.name,
-            dimension=spec.dimension,
-            max_batch_size=spec.max_batch_size,
-            query_prefix=spec.query_prefix,
-            passage_prefix=spec.passage_prefix,
+    async def set_parsed_key(self, document_id: UUID, parsed_key: str) -> None:
+        """Record the storage key of the parsed artifact on the document."""
+        await self._documents.set_parsed_key(
+            document_id=document_id,
+            parsed_key=parsed_key,
         )
 
-    if spec.provider == "openai":
-        raise NotImplementedError("OpenAI embeddings land in Phase 2. Set EMBEDDING_MODEL to a local model.")
+    async def get_document(self, document_id: UUID, stage: str = "internal"):
+        """Fetch a document, raising ``DocumentNotFound`` if missing"""
+        doc = await self._documents.get_by_id(document_id)
+        if doc is None:
+            raise DocumentNotFound(f"document {document_id} not found in {stage} stage")
+        return doc
 
-    raise ValueError(f"Unknown embedding provider: {spec.provider}")
+    async def record_attempt(
+        self,
+        job_id: UUID,
+        *,
+        error: str,
+        attempt: int,
+    ) -> None:
+        """Record a transient failure without changing job status."""
+        job = await self._jobs.get_by_id(job_id)
+        if job is None or job.status != JobStatus.RUNNING:
+            return
+        await self._jobs.record_attempt(job_id, error=error, attempt=attempt)
+
+    async def start_stage(
+        self,
+        job_id: UUID,
+        *,
+        stage: JobStage | None = None,
+    ) -> ProcessingJob:
+        """Transition job queued → running and its document → processing.
+
+        Idempotent for a job already RUNNING or FAILED, so an ARQ retry
+        can call it again without error. Commits the "document missing"
+        case itself, since there is no caller to commit for.
+
+        Args:
+            job_id: The job to start.
+
+        Returns:
+            The job row, now in RUNNING state. The caller owns the
+            commit.
+
+        Raises:
+            JobNotFound: The job row is gone. ``run_stage`` treats this
+                as a benign exit.
+            DocumentNotFound: The job exists but its document doesn't.
+                The job is marked FAILED and the transaction committed
+                before raising.
+            InvalidTransition: The job or document is in a state that
+                cannot transition to running/processing.
+        """
+
+        job = await self._jobs.get_by_id(job_id)
+        if job is None:
+            raise JobNotFound(str(job_id))
+
+        if stage is not None and job.stage != stage:
+            raise InvalidTransition(f"job {job_id} is for stage {job.stage}, not {stage}")
+
+        if job.status == JobStatus.DONE:
+            raise JobAlreadyDone(f"job {job_id} already done")
+        if job.status == JobStatus.FAILED:
+            raise JobAlreadyFailed(f"job {job_id} already failed")
+        if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
+            raise InvalidTransition(f"job {job_id} cannot start from status {job.status}")
+
+        doc = await self._documents.get_by_id(job.document_id)
+        if doc is None:
+            raise DocumentNotFound(str(job.document_id))
+
+        if doc.status not in (DocumentStatus.PENDING, DocumentStatus.PROCESSING):
+            raise InvalidTransition(f"document {doc.id} cannot start from status {doc.status}")
+
+        if job.status == JobStatus.QUEUED:
+            job.status = JobStatus.RUNNING
+            job.started_at = _utcnow()
+        elif job.started_at is None:
+            job.started_at = _utcnow()
+
+        if doc.status == DocumentStatus.PENDING:
+            await self._documents.set_status(doc.id, DocumentStatus.PROCESSING)
+
+        await self._session.flush()
+        return job
+
+    async def fail_stage(self, job_id: UUID, *, error: str) -> None:
+        """Transition job → FAILED and its document → FAILED.
+
+        Best-effort: if either row is missing, its update is skipped.
+        Used for permanent errors and retry exhaustion.
+
+        Args:
+            job_id: The job that failed.
+            error: Human-readable description. Written to the job's
+                ``details["error"]`` and the document's
+                ``error_message`` column.
+        """
+        job = await self._jobs.get_by_id(job_id)
+        if job is None or job.status in (JobStatus.DONE, JobStatus.FAILED):
+            await self._session.flush()
+            return
+
+        job.status = JobStatus.FAILED
+        job.finished_at = _utcnow()
+        job.details = {**(job.details or {}), "error": error}
+
+        doc = await self._documents.get_by_id(job.document_id)
+        if doc is not None and doc.status in (
+            DocumentStatus.PENDING,
+            DocumentStatus.PROCESSING,
+        ):
+            doc.status = DocumentStatus.FAILED
+            doc.error_message = error
+
+        await self._session.flush()
+
+    async def complete_stage(
+        self,
+        job_id: UUID,
+        *,
+        details: dict,
+        next_stage: JobStage | None,
+    ) -> ProcessingJob | None:
+        """Transition job RUNNING => DONE and advance the pipeline."""
+
+        job = await self._jobs.get_by_id(job_id)
+        if job is None:
+            raise JobNotFound(str(job_id))
+        if job.status == JobStatus.DONE:
+            raise JobAlreadyDone(f"job {job_id} already done")
+        if job.status != JobStatus.RUNNING:
+            raise InvalidTransition(f"job {job_id} cannot complete from status {job.status}")
+
+        doc = await self._documents.get_by_id(job.document_id)
+        if doc is None:
+            raise DocumentNotFound(str(job.document_id))
+        if doc.status != DocumentStatus.PROCESSING:
+            raise InvalidTransition(f"document {doc.id} cannot complete from status {doc.status}")
+
+        job.status = JobStatus.DONE
+        job.finished_at = _utcnow()
+        job.details = {**(job.details or {}), **details}
+
+        if job.stage == JobStage.EXTRACT and "pages" in details:
+            doc.page_count = details["pages"]
+
+        if next_stage is None:
+            doc.status = DocumentStatus.INDEXED
+            doc.indexed_at = _utcnow()
+            doc.metadata_ = {
+                **(doc.metadata_ or {}),
+                "chunk_count": details.get("inserted", 0),
+            }
+            next_job = None
+        else:
+            next_job = await self._jobs.create_enqueue(
+                document_id=doc.id,
+                stage=next_stage,
+            )
+
+        await self._session.flush()
+        return next_job
+
+    async def embed(self, chunk_list: list[PreparedChunk]) -> list[PreparedChunk]:
+        """Embed a list of chunks and attach vectors to each."""
+
+        embedder = get_embedder()
+        timeout_s = settings.embedding_spec.embed_timeout_s
+        try:
+            async with asyncio.timeout(timeout_s):
+                vectors = await embed_in_batches(embedder, [c.text for c in chunk_list])
+        except (TimeoutError, OSError) as exc:
+            raise TransientEmbeddingError(f"embedding timeout: {exc}") from exc
+
+        rows = [
+            PreparedChunk(
+                chunk_index=c.chunk_index,
+                text=c.text,
+                page_number=c.page_number,
+                section=c.section,
+                token_count=c.token_count,
+                doc_item_labels=c.doc_item_labels,
+                embedding=v,
+            )
+            for c, v in zip(chunk_list, vectors, strict=True)
+        ]
+        return rows
+
+    async def bulk_insert(
+        self,
+        document_id: UUID,
+        rows: Sequence[PreparedChunk],
+    ) -> tuple[int, int]:
+        """Replace all chunks for a document with a new set."""
+        deleted = await self._chunks.delete_for_document(document_id)
+        inserted = await self._chunks.bulk_insert(document_id, rows=rows)
+        return deleted, inserted

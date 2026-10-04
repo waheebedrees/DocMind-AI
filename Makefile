@@ -98,3 +98,10 @@ check-mgt: banner ## verify DB matches models
 
 worker-logs:  banner ## check worker
 	$(COMPOSE) logs -f worker
+
+worker-reset:  banner ## check worker
+	$(COMPOSE)  restart worker
+
+exec:  banner ## check worker
+	$(COMPOSE)  exec  $(cmd)
+

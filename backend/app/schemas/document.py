@@ -8,12 +8,10 @@ from app.models.enums import DocumentStatus, JobStage, JobStatus
 
 class DocumentResponse(BaseModel):
     document_id: UUID
-    key: str
-    content_hash: str
+    job_id: UUID
     mime_type: str
     size_bytes: int
-    deduplicated: bool
-    job_id: UUID | None
+    current_stage: JobStage | None
 
 
 class StageStates(BaseModel):
@@ -36,6 +34,10 @@ class DocumentRead(BaseModel):
     error_message: str | None
     created_at: datetime
     indexed_at: datetime | None
+
+
+class ReprocessRequest(BaseModel):
+    from_stage: str
 
 
 class DocumentStateResponse(BaseModel):

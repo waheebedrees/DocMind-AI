@@ -19,6 +19,7 @@ log = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+
     async with build_storage() as storage:
         app.state.start_time = time.monotonic()
         app.state.storage = storage
@@ -27,8 +28,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.info("app_starting", env=settings.environment, app=settings.app_name, db_url=settings.database_url, redis_url=settings.redis_url)
         try:
             yield
+
         finally:
             log.info("app_shutdown")
+            await app.state.arq_pool.aclose()
             await engine.dispose()
             await close_redis()
 

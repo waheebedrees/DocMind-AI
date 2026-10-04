@@ -6,7 +6,8 @@ from fastapi.routing import APIRouter
 from app.core.auth import get_exception_400, get_exception_404
 from app.core.config import settings
 from app.core.deps import ArqPooleDep, CurrentUserId, DocumentServiceDep, StorageDep
-from app.schemas.document import DocumentResponse, DocumentStateResponse
+from app.models.enums import _STAGE_TASK, JobStage
+from app.schemas.document import DocumentResponse, DocumentStateResponse, ReprocessRequest
 from app.services.storage import iter_upload
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -22,15 +23,17 @@ async def upload(
     if file.filename is None:
         raise get_exception_400("filename required")
     stored = await storage.put_stream(
-        user_id=UUID(user_id),
+        user_id=user_id,
         stream=iter_upload(file, chunk_size=settings.upload_chunk_bytes),
         filename=file.filename,
         max_bytes=settings.max_upload_bytes,
     )
-    res = await document_service.get_or_create(user_id=UUID(user_id), stored=stored)
+    res = await document_service.get_or_create(user_id=user_id, stored=stored)
     request_id = request.headers.get("X-Request-ID")
-
-    await arg_pool.enqueue_job(function="process_extract", job_id=str(res.job_id), _job_id=str(res.job_id), request_id=request_id)
+    if res and res.current_stage:
+        task = _STAGE_TASK[res.current_stage]
+        if task is not None:
+            await arg_pool.enqueue_job(function=task, job_id=str(res.job_id), _job_id=str(res.job_id), request_id=request_id)
     return res
 
 
@@ -45,7 +48,7 @@ async def get_document_state(
 ) -> DocumentStateResponse:
 
     try:
-        doc = await document_service.get_document_state(user_id=UUID(user_id), document_id=document_id)
+        doc = await document_service.get_document_state(user_id=user_id, document_id=document_id)
         return doc
     except Exception as exec:
         raise get_exception_404("Document not found") from exec
@@ -62,7 +65,36 @@ async def delete(
     storage: StorageDep,
 ) -> bool:
     try:
-        deleted = await document_service.delete_user_document(UUID(user_id), document_id=document_id, storage=storage)
+        deleted = await document_service.delete_user_document(user_id, document_id=document_id, storage=storage)
         return deleted
     except Exception as exec:
         raise get_exception_404("Document not found") from exec
+
+
+@router.post(
+    "/{document_id}/reprocess",
+    response_model=DocumentResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def reprocess(
+    request: Request,
+    document_id: UUID,
+    body: ReprocessRequest,
+    user_id: CurrentUserId,
+    document_service: DocumentServiceDep,
+    storage: StorageDep,
+    arg_pool: ArqPooleDep,
+) -> DocumentResponse:
+    res = await document_service.reprocess(
+        user_id,
+        document_id,
+        from_stage=JobStage(body.from_stage),
+        storage=storage,
+    )
+
+    request_id = request.headers.get("X-Request-ID")
+    if res and res.current_stage:
+        task = _STAGE_TASK[res.current_stage]
+        if task is not None:
+            await arg_pool.enqueue_job(function=task, job_id=str(res.job_id), _job_id=str(res.job_id), request_id=request_id)
+    return res

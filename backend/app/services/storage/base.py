@@ -5,8 +5,13 @@ from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
+
+from app.core.exceptions import (
+    DocMindError,
+    PermanentError,
+)
 
 # {uuid}/{2 hex}/{64 hex}{.ext} — nothing else is a valid key.
 _KEY_RE = re.compile(
@@ -16,36 +21,47 @@ _KEY_RE = re.compile(
 )
 
 _PIPELINE_KEY_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"  # user_id
-    r"/_pipeline/"
-    # document_id
-    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-    r"/[a-z_]+\.json\.gz\Z"
+    r"^_pipeline/cache"
+    r"/[0-9a-f]{16}"
+    r"/[0-9a-f]{64}"
+    r"/[a-z0-9_]+\.json\.gz\Z"
 )
-
 _CHUNK = 64 * 1024
 _WRITE_BUFFER = 4 * 1024 * 1024
 _HEAD_BYTES = 8192
 
 
-class StorageError(Exception):
+class StorageError(DocMindError):
     """Base class for storage failures."""
 
 
-class ObjectNotFound(StorageError):
-    """Raised when a key does not resolve to a stored object."""
+class InvalidKey(StorageError, PermanentError):
+    """Malformed key or path escape attempt."""
+
+    status_code = 422
+    code = "invalid_key"
 
 
-class InvalidKey(StorageError):
-    """Raised when a key is malformed or escapes the storage root."""
+class ObjectNotFound(StorageError, PermanentError):
+    """
+    Key does not resolve to a stored object.
+
+    For user-uploaded objects this surfaces as 404 to the API client;
+    for internal pipeline artifacts it is a permanent failure.
+    """
+
+    status_code = 404
+    code = "object_not_found"
 
 
-class UploadTooLarge(StorageError):
-    """Raised mid-stream when the byte cap is exceeded."""
+class UploadTooLarge(StorageError, PermanentError):
+    status_code = 413
+    code = "upload_too_large"
 
 
-class UnsupportedMime(StorageError):
-    """Raised when magic-byte detection yields a rejected MIME type."""
+class UnsupportedMime(StorageError, PermanentError):
+    status_code = 415
+    code = "unsupported_mime"
 
 
 @dataclass(frozen=True)
@@ -151,6 +167,10 @@ class BaseStorage(Protocol):
         """Deterministic key derivation. Pure function."""
         ...
 
-    def write_sync(self, key: str, data: bytes) -> None: ...
+    def list_keys(self) -> AsyncIterator[tuple[str, Any]]:
+        """Yield every user-visible key in the storage root. and last modification
 
-    def read_sync(self, key: str) -> bytes: ...
+        Excludes reserved prefixes (e.g. the tmp/ directory used for
+        in-flight uploads). Keys are logical, matching what put_stream /
+        materialize return — not physical paths.
+        """

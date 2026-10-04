@@ -1,9 +1,3 @@
-#!/usr/bin/env bash
-# script.sh — reset local state and run an end-to-end smoke test
-#
-# Usage:
-#   ./script.sh                  # reset DB, Qdrant, Redis, then smoke test
-#   SKIP_RESET=1 ./script.sh     # keep existing data, just run the smoke test
 
 set -uo pipefail
 
@@ -86,12 +80,14 @@ curl -s  "${API}/api/v1/auth/me" -H "Authorization: Bearer ${TOKEN}"
 
 
 
+
 # ================================================================
 # UPLOAD + PROCESS
 # ================================================================
 hr
 say "Upload test document"
-TEST_FILE="./docs/zerostrike_project (6).pdf"
+TEST_FILE="./docs/SDR External NDA revised_waheeb_e.pdf"
+# TEST_FILE="./docs/zerostrike_project (6).pdf"
 
 DOC_TITLE="Python history ${RUN_ID}"
 
@@ -105,10 +101,19 @@ DOC_ID=$(printf '%s' "${UPLOAD_RESPONSE}" | jget document_id)
 [ -n "${DOC_ID}" ] || die "upload did not return an id"
 echo "    document_id=${DOC_ID}"
 
+
+reprocess_response=$(curl -s -X POST "${API}/api/v1/documents/${DOC_ID}/reprocess" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "{\"from_stage\":\"chunk\"}")
+
+
+hr 
+echo "reprocess_response = ${reprocess_response}"
 hr
 say "Polling document status (max 60s)"
 STATUS=""
-for i in $(seq .05 50); do
+for i in $(seq .05 200); do
   DOC_JSON=$(curl -s "${API}/api/v1/documents/${DOC_ID}" \
     -H "Authorization: Bearer ${TOKEN}")
   STATUS=$(printf '%s' "${DOC_JSON}" | jget status)
@@ -127,49 +132,111 @@ for i in $(seq .05 50); do
   sleep 1
 
 done
-hr
-say "delete"
-DELETE_RESP=$(curl -s -X DELETE "${API}/api/v1/documents/${DOC_ID}" \
-      -H "Authorization: Bearer ${TOKEN}")
-
-echo "$DELETE_RESP"
-[ "${STATUS}" = "indexed" ] || die "document did not reach 'indexed' in 60s"
-
 
 
 hr
-say "Chat: Who created Python?"
-RESP1=$(curl -s -X POST "${API}/api/v1/chat/" \
+say "Retrieve: in-document query with doc filter"
+RETRIEVE_RESP=$(curl -s -X POST "${API}/api/v1/retrieval" \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{"message": "Who created Python?"}')
+  -d "{
+    \"query\": \"How many core tables does the system design have?\",
+    \"top_k\": 5,
+    \"document_ids\": [\"${DOC_ID}\"]
+  }")
 
-echo "${RESP1}" | pp
-CONV_ID=$(printf '%s' "${RESP1}" | jget conversation_id)
-echo "conversation_id=${CONV_ID}"
+echo "${RETRIEVE_RESP}" | pp
 
-# Sanity check the score is a real cosine, not the old bug's 1.0
-SCORE=$(printf '%s' "${RESP1}" | python -c "
+# Sanity: did we get passages?
+PASSAGE_COUNT=$(printf '%s' "${RETRIEVE_RESP}" | python -c "
 import sys, json
-d = json.load(sys.stdin)
-src = d.get('message', {}).get('source', [])
-print(src[0]['similarity_score'] if src else '')
+try:
+    print(len(json.load(sys.stdin).get('passages', [])))
+except Exception:
+    print(0)
 ")
-if [ -n "${SCORE}" ]; then
-  echo "    top similarity_score=${SCORE}"
-  if [ "${SCORE}" = "1.0" ]; then
-    echo "    WARN: score is exactly 1.0 — check RRF normalization"
-  fi
+echo "    passages=${PASSAGE_COUNT}"
+[ "${PASSAGE_COUNT}" -ge 1 ] || die "retrieval returned no passages"
+
+# Top passage should mention the answer (nine core tables)
+TOP_TEXT=$(printf '%s' "${RETRIEVE_RESP}" | python -c "
+import sys, json
+try:
+    ps = json.load(sys.stdin).get('passages', [])
+    print(ps[0]['text'].lower() if ps else '')
+except Exception:
+    print('')
+")
+if echo "${TOP_TEXT}" | grep -q "nine core tables\|9 core tables"; then
+  echo "    ✓ top passage contains the expected answer"
+else
+  echo "    ✗ top passage does not mention 'nine core tables'"
+  echo "    preview: $(printf '%s' "${TOP_TEXT}" | head -c 200)"
 fi
 
+# RRF score — not a similarity, just a rank signal. Top of a single
+# ranking is 1/(60+1) ≈ 0.01639. Present in both lists doubles it.
+TOP_SCORE=$(printf '%s' "${RETRIEVE_RESP}" | python -c "
+import sys, json
+try:
+    ps = json.load(sys.stdin).get('passages', [])
+    print(f'{ps[0][\"score\"]:.6f}' if ps else '')
+except Exception:
+    print('')
+")
+echo "    top_score=${TOP_SCORE} (RRF rank score, not cosine)"
+
+CTX_LEN=$(printf '%s' "${RETRIEVE_RESP}" | python -c "
+import sys, json
+try:
+    print(len(json.load(sys.stdin).get('context', '')))
+except Exception:
+    print(0)
+")
+echo "    context_chars=${CTX_LEN}"
+[ "${CTX_LEN}" -gt 0 ] || die "retrieval returned empty context"
+
 hr
-say "Chat: When was it released? (follow-up, same conversation)"
-RESP2=$(curl -s -X POST "${API}/api/v1/chat/" \
+say "Retrieve: no doc filter (searches all indexed docs)"
+RETRIEVE_ALL=$(curl -s -X POST "${API}/api/v1/retrieval" \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "{\"message\":\"When was it released?\",\"conversation_id\":\"${CONV_ID}\"}")
+  -d '{"query": "penetration testing framework", "top_k": 3}')
 
-echo "${RESP2}" | pp
+echo "${RETRIEVE_ALL}" | python -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f\"    passages={len(d.get('passages', []))}\")
+for p in d.get('passages', [])[:3]:
+    print(f\"    [p.{p['page_start']}] {p['text'][:80].strip()}...\")
+"
 
 hr
-say "Smoke test complete"
+say "Retrieve: query with no answer in corpus"
+RETRIEVE_MISS=$(curl -s -X POST "${API}/api/v1/retrieval" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is the capital of France?", "top_k": 3}')
+
+echo "${RETRIEVE_MISS}" | python -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f\"    passages={len(d.get('passages', []))} (no relevance threshold by default)\")
+"
+
+hr
+say "Retrieve: reranker status"
+RETRIEVE_RERANK=$(curl -s -X POST "${API}/api/v1/retrieval" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "How many core tables does the system design have?", "top_k": 5}')
+
+echo "${RETRIEVE_RERANK}" | python -c "
+import sys, json
+d = json.load(sys.stdin)
+r = d.get('reranked')
+print(f\"    reranked={r}\")
+if not r:
+    print('    (no reranker configured — set RETRIEVAL__RERANK_URL and run TEI)')
+print(f\"    timings_ms={d.get('timings_ms')}\")
+"

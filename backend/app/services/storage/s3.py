@@ -8,6 +8,7 @@ import os
 import tempfile
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
@@ -358,3 +359,13 @@ class S3Storage(BaseStorage):
             await self._client.delete_object(Bucket=self._bucket, Key=s3_key)
         except Exception as e:
             raise StorageError(f"S3 delete_object failed: {e}") from e
+
+    async def list_keys(self) -> AsyncIterator[tuple[str, datetime]]:
+        paginator = self._client.get_paginator("list_objects_v2")
+        prefix = self._prefix or ""
+        async for page in paginator.paginate(Bucket=self._bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                if prefix and key.startswith(prefix):
+                    key = key[len(prefix) :]
+                yield key, obj["LastModified"]
