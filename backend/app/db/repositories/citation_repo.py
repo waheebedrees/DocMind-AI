@@ -6,10 +6,11 @@ from uuid import UUID
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.repositories.base import BaseRepository
 from app.models.citation import Citation
 
 
-class CitationRepository:
+class CitationRepository(BaseRepository[Citation]):
     """Data access for :class:`Citation`.
 
     Citations are written in bulk right after a message is generated, so
@@ -22,7 +23,7 @@ class CitationRepository:
         Args:
             session (AsyncSession): database session.
         """
-        self.session = session
+        super().__init__(Citation, session)
 
     async def bulk_insert(self, rows: Sequence[dict]) -> int:
         """Insert many citations in a single flush.
@@ -60,11 +61,7 @@ class CitationRepository:
             list[Citation]: citations ordered by ``rank`` ascending
                 (possibly empty).
         """
-        stmt = (
-            select(Citation)
-            .where(Citation.message_id == message_id)
-            .order_by(Citation.rank)
-        )
+        stmt = select(Citation).where(Citation.message_id == message_id).order_by(Citation.rank)
         return list((await self.session.execute(stmt)).scalars().all())
 
     async def count_for_message(self, message_id: UUID) -> int:
@@ -76,11 +73,7 @@ class CitationRepository:
         Returns:
             int: number of citations.
         """
-        stmt = (
-            select(func.count())
-            .select_from(Citation)
-            .where(Citation.message_id == message_id)
-        )
+        stmt = select(func.count()).select_from(Citation).where(Citation.message_id == message_id)
         return int((await self.session.scalar(stmt)) or 0)
 
     async def delete_for_message(self, message_id: UUID) -> int:
@@ -97,5 +90,4 @@ class CitationRepository:
             int: number of citations deleted.
         """
         stmt = delete(Citation).where(Citation.message_id == message_id)
-        result = await self.session.execute(stmt)
-        return result.rowcount or 0
+        return await self.execute_rowcount(stmt)

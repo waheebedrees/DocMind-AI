@@ -6,11 +6,12 @@ from uuid import UUID
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.repositories.base import BaseRepository
 from app.models.enums import EvaluationStatus
 from app.models.evaluation import EvaluationResult, EvaluationRun
 
 
-class EvaluationRunRepository:
+class EvaluationRunRepository(BaseRepository[EvaluationRun]):
     """Data access for :class:`EvaluationRun`.
 
     Runs are long-lived records; results are written in bulk once a run
@@ -23,36 +24,7 @@ class EvaluationRunRepository:
         Args:
             session (AsyncSession): database session.
         """
-        self.session = session
-
-    async def create(
-        self,
-        *,
-        user_id: UUID,
-        name: str,
-        dataset_size: int,
-        pipeline_version: str,
-    ) -> EvaluationRun:
-        """Create a run in PENDING state.
-
-        Args:
-            user_id (UUID): owner.
-            name (str): human-readable label.
-            dataset_size (int): number of questions in the dataset.
-            pipeline_version (str): identifier of the pipeline under test.
-
-        Returns:
-            EvaluationRun: the newly created, flushed instance.
-        """
-        run = EvaluationRun(
-            user_id=user_id,
-            name=name,
-            dataset_size=dataset_size,
-            pipeline_version=pipeline_version,
-        )
-        self.session.add(run)
-        await self.session.flush()
-        return run
+        super().__init__(EvaluationRun, session)
 
     async def get_for_user(self, run_id: UUID, user_id: UUID) -> EvaluationRun | None:
         """Fetch a run only if it belongs to ``user_id``.
@@ -92,8 +64,7 @@ class EvaluationRunRepository:
         stmt = select(EvaluationRun).where(EvaluationRun.user_id == user_id)
         if status is not None:
             stmt = stmt.where(EvaluationRun.status == status)
-        stmt = stmt.order_by(EvaluationRun.created_at.desc()
-                             ).limit(limit).offset(offset)
+        stmt = stmt.order_by(EvaluationRun.created_at.desc()).limit(limit).offset(offset)
         return list((await self.session.execute(stmt)).scalars().all())
 
     async def set_status(
@@ -137,11 +108,7 @@ class EvaluationRunRepository:
         Returns:
             int: total number of runs.
         """
-        stmt = (
-            select(func.count())
-            .select_from(EvaluationRun)
-            .where(EvaluationRun.user_id == user_id)
-        )
+        stmt = select(func.count()).select_from(EvaluationRun).where(EvaluationRun.user_id == user_id)
         return int((await self.session.scalar(stmt)) or 0)
 
     async def delete_for_user(self, run_id: UUID, user_id: UUID) -> int:
@@ -160,11 +127,10 @@ class EvaluationRunRepository:
             EvaluationRun.id == run_id,
             EvaluationRun.user_id == user_id,
         )
-        result = await self.session.execute(stmt)
-        return result.rowcount or 0
+        return await self.execute_rowcount(stmt)
 
 
-class EvaluationResultRepository:
+class EvaluationResultRepository(BaseRepository[EvaluationResult]):
     """Data access for :class:`EvaluationResult`.
 
     Results are append-only: they are written once when a run completes
@@ -176,7 +142,7 @@ class EvaluationResultRepository:
         Args:
             session (AsyncSession): database session.
         """
-        self.session = session
+        super().__init__(EvaluationResult, session)
 
     async def bulk_insert(self, rows: list[dict]) -> int:
         """Insert results for a run in one flush.
@@ -209,11 +175,7 @@ class EvaluationResultRepository:
         Returns:
             list[EvaluationResult]: results in insertion order.
         """
-        stmt = (
-            select(EvaluationResult)
-            .where(EvaluationResult.run_id == run_id)
-            .order_by(EvaluationResult.created_at, EvaluationResult.id)
-        )
+        stmt = select(EvaluationResult).where(EvaluationResult.run_id == run_id).order_by(EvaluationResult.created_at, EvaluationResult.id)
         return list((await self.session.execute(stmt)).scalars().all())
 
     async def count_for_run(self, run_id: UUID) -> int:
@@ -225,11 +187,7 @@ class EvaluationResultRepository:
         Returns:
             int: number of results.
         """
-        stmt = (
-            select(func.count())
-            .select_from(EvaluationResult)
-            .where(EvaluationResult.run_id == run_id)
-        )
+        stmt = select(func.count()).select_from(EvaluationResult).where(EvaluationResult.run_id == run_id)
         return int((await self.session.scalar(stmt)) or 0)
 
     async def delete_for_run(self, run_id: UUID) -> int:
@@ -244,7 +202,5 @@ class EvaluationResultRepository:
         Returns:
             int: number of results deleted.
         """
-        stmt = delete(EvaluationResult).where(
-            EvaluationResult.run_id == run_id)
-        result = await self.session.execute(stmt)
-        return result.rowcount or 0
+        stmt = delete(EvaluationResult).where(EvaluationResult.run_id == run_id)
+        return await self.execute_rowcount(stmt)

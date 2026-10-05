@@ -5,10 +5,11 @@ from uuid import UUID
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.repositories.base import BaseRepository
 from app.models.conversation import Conversation
 
 
-class ConversationRepository:
+class ConversationRepository(BaseRepository[Conversation]):
     """Data access for :class:`Conversation`.
 
     The session is injected and never committed here. The caller owns the
@@ -21,22 +22,7 @@ class ConversationRepository:
         Args:
             session (AsyncSession): database session.
         """
-        self.session = session
-
-    async def create(self, *, user_id: UUID, title: str | None = None) -> Conversation:
-        """Create a new conversation owned by ``user_id``.
-
-        Args:
-            user_id (UUID): owner of the conversation.
-            title (str | None): optional title. Defaults to None.
-
-        Returns:
-            Conversation: the newly created, flushed instance.
-        """
-        conv = Conversation(user_id=user_id, title=title)
-        self.session.add(conv)
-        await self.session.flush()
-        return conv
+        super().__init__(Conversation, session)
 
     async def get_for_user(self, conversation_id: UUID, user_id: UUID) -> Conversation | None:
         """Fetch a conversation only if it belongs to ``user_id``.
@@ -75,13 +61,7 @@ class ConversationRepository:
         Returns:
             list[Conversation]: matching conversations (possibly empty).
         """
-        stmt = (
-            select(Conversation)
-            .where(Conversation.user_id == user_id)
-            .order_by(Conversation.updated_at.desc())
-            .limit(limit)
-            .offset(offset)
-        )
+        stmt = select(Conversation).where(Conversation.user_id == user_id).order_by(Conversation.updated_at.desc()).limit(limit).offset(offset)
         return list((await self.session.execute(stmt)).scalars().all())
 
     async def count_for_user(self, user_id: UUID) -> int:
@@ -93,8 +73,7 @@ class ConversationRepository:
         Returns:
             int: total number of conversations for this user.
         """
-        stmt = select(func.count()).select_from(
-            Conversation).where(Conversation.user_id == user_id)
+        stmt = select(func.count()).select_from(Conversation).where(Conversation.user_id == user_id)
         return int((await self.session.scalar(stmt)) or 0)
 
     async def set_title(self, conversation_id: UUID, title: str | None) -> None:
@@ -130,5 +109,4 @@ class ConversationRepository:
             Conversation.id == conversation_id,
             Conversation.user_id == user_id,
         )
-        result = await self.session.execute(stmt)
-        return result.rowcount or 0
+        return await self.execute_rowcount(stmt)

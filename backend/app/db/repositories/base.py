@@ -1,7 +1,7 @@
-from typing import TypeVar
+from typing import Any, TypeVar
 from uuid import UUID
 
-from sqlalchemy import Select, func, select, update
+from sqlalchemy import CursorResult, Select, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Base
@@ -132,3 +132,16 @@ class BaseRepository[ModelType: Base]:
         subquery = stmt.order_by(None).subquery()
         result = await self.session.scalar(select(func.count()).select_from(subquery))
         return int(result or 0)
+
+    async def execute_rowcount(self, stmt: Any) -> int:
+        """Execute a DML statement and return its affected-row count.
+
+        SQLAlchemy types ``AsyncSession.execute`` as returning ``Result``,
+        which has no ``rowcount``; DML returns a ``CursorResult`` at
+        runtime, which does. The ``isinstance`` narrows the type for mypy
+        without resorting to ``typing.cast``.
+        """
+        result = await self.session.execute(stmt)
+        if not isinstance(result, CursorResult):
+            raise TypeError(f"expected CursorResult from DML, got {type(result).__name__}")
+        return result.rowcount

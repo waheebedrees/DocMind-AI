@@ -5,10 +5,11 @@ from uuid import UUID
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.repositories.base import BaseRepository
 from app.models.extraction import Extraction
 
 
-class ExtractionRepository:
+class ExtractionRepository(BaseRepository[Extraction]):
     """Data access for :class:`Extraction`.
 
     Extractions are keyed by ``(document_id, schema_name)`` in practice —
@@ -22,55 +23,7 @@ class ExtractionRepository:
         Args:
             session (AsyncSession): database session.
         """
-        self.session = session
-
-    async def create(
-        self,
-        *,
-        document_id: UUID,
-        schema_name: str,
-        data: dict,
-        confidence: float,
-        needs_review: bool = False,
-    ) -> Extraction:
-        """Persist a new extraction.
-
-        Args:
-            document_id (UUID): source document.
-            schema_name (str): which extraction schema produced this.
-            data (dict): extracted payload, stored as JSONB.
-            confidence (float): model confidence in [0, 1].
-            needs_review (bool): whether a human should review.
-                Defaults to False.
-
-        Returns:
-            Extraction: the newly created, flushed instance.
-
-        Raises:
-            IntegrityError: on a check-constraint violation
-                (confidence outside [0, 1]).
-        """
-        row = Extraction(
-            document_id=document_id,
-            schema_name=schema_name,
-            data=data,
-            confidence=confidence,
-            needs_review=needs_review,
-        )
-        self.session.add(row)
-        await self.session.flush()
-        return row
-
-    async def get(self, extraction_id: UUID) -> Extraction | None:
-        """Fetch an extraction by primary key.
-
-        Args:
-            extraction_id (UUID): primary key.
-
-        Returns:
-            Extraction | None: the extraction, or None if not found.
-        """
-        return await self.session.get(Extraction, extraction_id)
+        super().__init__(Extraction, session)
 
     async def list_for_document(self, document_id: UUID) -> list[Extraction]:
         """Return a document's extractions, newest first.
@@ -81,16 +34,10 @@ class ExtractionRepository:
         Returns:
             list[Extraction]: matching extractions (possibly empty).
         """
-        stmt = (
-            select(Extraction)
-            .where(Extraction.document_id == document_id)
-            .order_by(Extraction.created_at.desc())
-        )
+        stmt = select(Extraction).where(Extraction.document_id == document_id).order_by(Extraction.created_at.desc())
         return list((await self.session.execute(stmt)).scalars().all())
 
-    async def get_for_document_by_schema(
-        self, document_id: UUID, schema_name: str
-    ) -> Extraction | None:
+    async def get_for_document_by_schema(self, document_id: UUID, schema_name: str) -> Extraction | None:
         """Return the newest extraction of a given schema for a document.
 
         "Newest" rather than "the" because the model permits multiple rows
@@ -137,11 +84,7 @@ class ExtractionRepository:
         stmt = select(Extraction).where(Extraction.needs_review.is_(True))
         if document_id is not None:
             stmt = stmt.where(Extraction.document_id == document_id)
-        stmt = (
-            stmt.order_by(Extraction.created_at, Extraction.id)
-            .limit(limit)
-            .offset(offset)
-        )
+        stmt = stmt.order_by(Extraction.created_at, Extraction.id).limit(limit).offset(offset)
         return list((await self.session.execute(stmt)).scalars().all())
 
     async def set_needs_review(self, extraction_id: UUID, needs_review: bool) -> Extraction | None:
@@ -170,11 +113,7 @@ class ExtractionRepository:
         Returns:
             int: number of extractions.
         """
-        stmt = (
-            select(func.count())
-            .select_from(Extraction)
-            .where(Extraction.document_id == document_id)
-        )
+        stmt = select(func.count()).select_from(Extraction).where(Extraction.document_id == document_id)
         return int((await self.session.scalar(stmt)) or 0)
 
     async def delete_for_document(self, document_id: UUID) -> int:
@@ -190,5 +129,4 @@ class ExtractionRepository:
             int: number of rows deleted.
         """
         stmt = delete(Extraction).where(Extraction.document_id == document_id)
-        result = await self.session.execute(stmt)
-        return result.rowcount or 0
+        return await self.execute_rowcount(stmt)

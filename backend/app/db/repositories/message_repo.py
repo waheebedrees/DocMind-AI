@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.enums import MessageRole
+from app.db.repositories.base import BaseRepository
 from app.models.message import Message
 
 
-class MessageRepository:
+class MessageRepository(BaseRepository[Message]):
     """Data access for :class:`Message`.
 
     Messages are always reached through their conversation, so this repo
@@ -24,45 +23,7 @@ class MessageRepository:
         Args:
             session (AsyncSession): database session.
         """
-        self.session = session
-
-    async def create(
-        self,
-        *,
-        conversation_id: UUID,
-        role: MessageRole,
-        content: str,
-        tokens_in: int | None = None,
-        tokens_out: int | None = None,
-        cost_usd: Decimal | None = None,
-        latency_ms: int | None = None,
-    ) -> Message:
-        """Persist a new message in a conversation.
-
-        Args:
-            conversation_id (UUID): parent conversation.
-            role (MessageRole): speaker role.
-            content (str): message body.
-            tokens_in (int | None): prompt tokens, if known.
-            tokens_out (int | None): completion tokens, if known.
-            cost_usd (Decimal | None): billable cost, if known.
-            latency_ms (int | None): end-to-end latency, if known.
-
-        Returns:
-            Message: the newly created, flushed instance.
-        """
-        msg = Message(
-            conversation_id=conversation_id,
-            role=role,
-            content=content,
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
-            cost_usd=cost_usd,
-            latency_ms=latency_ms,
-        )
-        self.session.add(msg)
-        await self.session.flush()
-        return msg
+        super().__init__(Message, session)
 
     async def get(self, message_id: UUID) -> Message | None:
         """Fetch a message by primary key.
@@ -87,16 +48,10 @@ class MessageRepository:
         Returns:
             list[Message]: messages in chronological order (possibly empty).
         """
-        stmt = (
-            select(Message)
-            .where(Message.conversation_id == conversation_id)
-            .order_by(Message.created_at, Message.id)
-        )
+        stmt = select(Message).where(Message.conversation_id == conversation_id).order_by(Message.created_at, Message.id)
         return list((await self.session.execute(stmt)).scalars().all())
 
-    async def latest_for_conversation(
-        self, conversation_id: UUID, *, limit: int = 20
-    ) -> list[Message]:
+    async def latest_for_conversation(self, conversation_id: UUID, *, limit: int = 20) -> list[Message]:
         """Return the newest ``limit`` messages, oldest-first.
 
         Queries in descending order so the DB can use the
@@ -111,12 +66,7 @@ class MessageRepository:
         Returns:
             list[Message]: up to ``limit`` messages, oldest-first.
         """
-        stmt = (
-            select(Message)
-            .where(Message.conversation_id == conversation_id)
-            .order_by(Message.created_at.desc(), Message.id.desc())
-            .limit(limit)
-        )
+        stmt = select(Message).where(Message.conversation_id == conversation_id).order_by(Message.created_at.desc(), Message.id.desc()).limit(limit)
         rows = list((await self.session.execute(stmt)).scalars().all())
         rows.reverse()
         return rows
@@ -130,11 +80,7 @@ class MessageRepository:
         Returns:
             int: number of messages.
         """
-        stmt = (
-            select(func.count())
-            .select_from(Message)
-            .where(Message.conversation_id == conversation_id)
-        )
+        stmt = select(func.count()).select_from(Message).where(Message.conversation_id == conversation_id)
         return int((await self.session.scalar(stmt)) or 0)
 
     async def delete_for_conversation(self, conversation_id: UUID) -> int:
@@ -150,7 +96,5 @@ class MessageRepository:
         Returns:
             int: number of messages deleted.
         """
-        stmt = delete(Message).where(
-            Message.conversation_id == conversation_id)
-        result = await self.session.execute(stmt)
-        return result.rowcount or 0
+        stmt = delete(Message).where(Message.conversation_id == conversation_id)
+        return await self.execute_rowcount(stmt)
