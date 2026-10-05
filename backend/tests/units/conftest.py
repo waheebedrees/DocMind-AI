@@ -1,9 +1,13 @@
+import itertools
+from app.core.config import settings
 import uuid
 from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
+
 from app.db.repositories.user_repo import UserRepository
+from app.models.chunk import DocumentChunk
 from app.models.document import Document
 from app.models.enums import DocumentStatus, JobStage, JobStatus
 from app.models.processing_job import ProcessingJob
@@ -45,7 +49,6 @@ def make_document(
     status: DocumentStatus = DocumentStatus.PENDING,
     created_at: datetime | None = None,
 ) -> Document:
-
     doc = Document(
         user_id=user_id,
         filename=filename,
@@ -73,3 +76,82 @@ def make_job(
         status=status,
         details=details if details is not None else {},
     )
+
+
+def make_chunk(
+    document_id: uuid.UUID,
+    *,
+    chunk_index: int = 0,
+    text: str = "chunk text",
+    token_count: int = 3,
+    embedding: list[float] | None = None,
+    metadata: dict | None = None,
+) -> DocumentChunk:
+    if embedding is None:
+        embedding = [0.0] * settings.embedding_dim
+    return DocumentChunk(
+        document_id=document_id,
+        chunk_index=chunk_index,
+        text=text,
+        token_count=token_count,
+        embedding=embedding,
+        metadata_=metadata if metadata is not None else {},
+    )
+
+@pytest.fixture
+async def other_user(session):
+    u = make_user(email="other@example.com")
+    session.add(u)
+    await session.flush()
+    return u
+
+
+@pytest.fixture
+async def user(session):
+    u = make_user()
+    session.add(u)
+    await session.flush()
+    return u
+
+
+@pytest.fixture
+async def document(session, user):
+    doc = make_document(user_id=user.id)
+    session.add(doc)
+    await session.flush()
+    return doc
+
+
+@pytest.fixture
+async def other_document(session, user):
+    doc = make_document(user_id=user.id, filename="other.pdf",
+                        content_hash="cafebabe")
+    session.add(doc)
+    await session.flush()
+    return doc
+
+
+@pytest.fixture
+async def chunk(session, document):
+    c = make_chunk(document_id=document.id)
+    session.add(c)
+    await session.flush()
+    return c
+
+
+@pytest.fixture
+def chunk_factory(session, document):
+    """Factory: each call creates a distinct DocumentChunk on `document`.
+
+    Assigns a fresh chunk_index per call so tests needing N citations
+    don't trip the unique (document_id, chunk_index) constraint.
+    """
+    counter = itertools.count()
+
+    async def _make():
+        c = make_chunk(document_id=document.id, chunk_index=next(counter))
+        session.add(c)
+        await session.flush()
+        return c
+
+    return _make

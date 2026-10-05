@@ -42,6 +42,14 @@ async def db(engine):
 
 
 @pytest_asyncio.fixture
+async def session(engine):
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with session_factory() as session:
+        yield session
+        await session.rollback()
+
+
+@pytest_asyncio.fixture
 async def client(db):
     async def _override_db():
         yield db
