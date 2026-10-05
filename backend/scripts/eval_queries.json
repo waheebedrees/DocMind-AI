@@ -1,0 +1,58 @@
+[
+  {
+    "id": "core-tables-conclusion",
+    "query": "How many core tables does the system design have according to the conclusion?",
+    "keywords": ["nine core tables"],
+    "reference_answer": "Nine core tables: mission, phase, session, task, finding, agent_state, llm_provider, report, and system_config.",
+    "tags": ["fact-lookup", "single-chunk"]
+  },
+  {
+    "id": "core-tables-schema",
+    "query": "How many main tables are in the relational schema?",
+    "keywords": ["eight main tables", "relational schema"],
+    "reference_answer": "Eight main tables.",
+    "tags": ["fact-lookup"]
+  },
+  {
+    "id": "hardware-cpu",
+    "query": "What CPU is required for ZeroStrike?",
+    "keywords": ["hardware requirements", "intel i5"],
+    "reference_answer": "4 cores, Intel i5 equivalent or better.",
+    "tags": ["fact-lookup"]
+  },
+  {
+    "id": "architecture-layers",
+    "query": "What are the five layers of the ZeroStrike architecture?",
+    "keywords": ["five-layer", "presentation layer"],
+    "reference_answer": "Presentation, agent, execution, data, and AI/ML layers.",
+    "tags": ["fact-lookup", "multi-fact"]
+  },
+  {
+    "id": "kpi-dimensions",
+    "query": "What five dimensions are used to evaluate ZeroStrike performance?",
+    "keywords": ["five critical dimensions", "effectiveness", "autonomy"],
+    "reference_answer": "Effectiveness, efficiency, reliability, autonomy, and scalability.",
+    "tags": ["fact-lookup", "enumeration"]
+  },
+  {
+    "id": "no-answer-revenue",
+    "query": "What is ZeroStrike's annual revenue?",
+    "keywords": [],
+    "answerable": false,
+    "tags": ["unanswerable"]
+  },
+  {
+    "id": "fk-relationships",
+    "query": "Which tables have foreign keys referencing mission_id?",
+    "keywords": ["foreign key relationships", "mission _ id"],
+    "reference_answer": "phase, agent_state, report, and llm_provider.",
+    "tags": ["table-data"]
+  },
+  {
+    "id": "paraphrase-docker",
+    "query": "How does the system ensure safe execution of potentially dangerous code?",
+    "keywords": ["docker", "sandboxed execution"],
+    "reference_answer": "Docker-based sandboxed execution environment.",
+    "tags": ["semantic-paraphrase"]
+  }
+]

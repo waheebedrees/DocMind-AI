@@ -1,5 +1,10 @@
 ENV ?= dev
 ENV_FILE ?= envs/$(ENV).env
+EVAL_SET ?= eval/fixtures/eval_set.jsonl
+STAMP := $(shell date +%Y%m%d-%H%M%S)
+
+TOP_K    ?= 8
+
 COMPOSE := docker compose --env-file $(ENV_FILE) -f infra/docker-compose.yml
 
 CYAN  := \033[36m
@@ -105,3 +110,9 @@ worker-reset:  banner ## check worker
 exec:  banner ## check worker
 	$(COMPOSE)  exec  $(cmd)
 
+eval-run: banner
+	$(COMPOSE) exec backend python -m eval.cli \
+	  --eval-set $(EVAL_SET) \
+	  --output /app/eval-results/$(STAMP).json \
+	  --top-k $(TOP_K)
+	@echo "→ ./eval-results/$(STAMP).json"

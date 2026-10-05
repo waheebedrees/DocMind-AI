@@ -1,8 +1,8 @@
-"""add unique constraint to citations
+"""e
 
-Revision ID: 459af247767d
-Revises: bdbcbbe5489d
-Create Date: 2026-10-05 00:34:54.342996
+Revision ID: a8175db20176
+Revises: 459af247767d
+Create Date: 2026-10-05 03:27:45.849155
 
 """
 
@@ -14,8 +14,8 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "459af247767d"
-down_revision: str | Sequence[str] | None = "bdbcbbe5489d"
+revision: str = "a8175db20176"
+down_revision: str | Sequence[str] | None = "459af247767d"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

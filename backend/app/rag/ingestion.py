@@ -134,7 +134,7 @@ class Ingester:
                 cannot transition to running/processing (e.g. a stage
                 mismatch, or a document that is INDEXED/FAILED).
         """
-        
+
         job = await self._jobs.get_by_id(job_id)
         if job is None:
             raise JobNotFound(str(job_id))

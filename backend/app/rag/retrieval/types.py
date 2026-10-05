@@ -55,3 +55,4 @@ class RetrievalResult:
     reranked: bool
     timings_ms: dict[str, float] = field(default_factory=dict)
     candidate_counts: dict[str, int] = field(default_factory=dict)
+    stages: dict[str, list[Candidate]] = field(default_factory=dict)

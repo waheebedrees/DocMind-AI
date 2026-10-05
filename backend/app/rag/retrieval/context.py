@@ -70,7 +70,6 @@ def build_passages(
     return passages
 
 
-
 def render_context(passages: list[Passage]) -> str:
     blocks = []
     for p in passages:

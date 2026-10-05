@@ -40,36 +40,40 @@ def _clean_text(s: str) -> str:
     return s.strip()
 
 
-def _toc_item_indices(doc: DoclingDocument) -> set[int]:
-    """Indices of text items that contain a dot-leader + page number.
-
-    Docling emits one text item per ToC line, so a single match marks
-    an item as ToC. (The old `>= 2` threshold assumed multiple entries
-    per item — that never happens with Docling output.)
-    """
-    return {idx for idx, item in enumerate(doc.texts) if _TOC_LINE.search(item.text or "")}
+def _toc_items(doc: DoclingDocument) -> list:
+    """Text items that contain a dot-leader + page number."""
+    return [item for item in doc.texts if _TOC_LINE.search(item.text or "")]
 
 
-def _is_toc_document(doc: DoclingDocument, toc_indices: set[int]) -> bool:
+def _is_toc_document(doc: DoclingDocument, toc_items: list) -> bool:
     """5+ ToC-marked items, clustered in reading order, with ascending page numbers."""
-    if len(toc_indices) < 5:
+    if len(toc_items) < 5:
         return False
 
-    # Cluster: largest run of ToC items within a 5-index window.
-    indices = sorted(toc_indices)
+    # Reading-order positions come from each item's self_ref (`#/texts/N`).
+    indices: list[int] = []
+    for item in toc_items:
+        ref = getattr(item, "self_ref", "")
+        try:
+            indices.append(int(ref.rsplit("/", 1)[1]))
+        except (ValueError, IndexError):
+            indices.append(doc.texts.index(item))
+    indices.sort()
+
     best_run = current = 1
     for a, b in zip(indices, indices[1:], strict=False):
         current = current + 1 if b - a <= 5 else 1
         best_run = max(best_run, current)
-
     if best_run < 5:
         return False
 
-    # Monotonic: page numbers should mostly increase.
     pages: list[int] = []
-    for idx in indices:
-        for m in _TOC_LINE.finditer(doc.texts[idx].text or ""):
+    for item in toc_items:
+        for m in _TOC_LINE.finditer(item.text or ""):
             pages.append(int(m.group(1)))
+
+    if len(pages) < 2:  # guard the divisor
+        return False
     ascending = sum(1 for a, b in zip(pages, pages[1:], strict=False) if b >= a)
     return ascending / (len(pages) - 1) > 0.8
 
@@ -79,7 +83,6 @@ def clean_document(doc: DoclingDocument) -> dict:
     changed = 0
     dropped_empty = 0
 
-    # --- Phase 1: normalize every text item ---
     for item in doc.texts:
         original = item.text or ""
         cleaned = _clean_text(original)
@@ -89,14 +92,18 @@ def clean_document(doc: DoclingDocument) -> dict:
         if not cleaned:
             dropped_empty += 1
 
-    toc_indices = _toc_item_indices(doc)
-    toc_detected = _is_toc_document(doc, toc_indices)
+    toc_items = _toc_items(doc)
+    toc_detected = _is_toc_document(doc, toc_items)
 
     pruned = 0
     if toc_detected:
-        before = len(doc.texts)
-        doc.texts = [item for i, item in enumerate(doc.texts) if i not in toc_indices]
-        pruned = before - len(doc.texts)
+        pruned = len(toc_items)
+        # delete_items updates self_refs, parent pointers, group children,
+        # floating-item captions/references/footnotes, and rich-cell refs,
+        # so the ref graph survives model_validate_json on reload. The old
+        # list-filter approach shifted indices without renumbering refs,
+        # which is what tripped the hierarchy validator.
+        doc.delete_items(node_items=toc_items)
     else:
         log.info("prune_skipped", reason="no_toc_detected")
 
@@ -105,7 +112,7 @@ def clean_document(doc: DoclingDocument) -> dict:
         "changed": changed,
         "empty": dropped_empty,
         "toc_detected": toc_detected,
-        "toc_items_found": len(toc_indices),
+        "toc_items_found": len(toc_items),
         "pruned": pruned,
     }
     log.info("cleaner_done", **stats)

@@ -60,6 +60,10 @@ services:
       - ../backend/app:/app/app 
       - ../backend/alembic:/app/backend/alembic   
       - ../alembic.ini:/app/alembic.ini:ro 
+      - ../backend/scripts:/app/scripts:ro
+      - ../backend/eval:/app/eval:ro
+      - ../eval-results:/app/eval-results
+      - ../eval-results:/app/eval-results
       - docling_cache:/root/.cache
       - storage_data:/var/lib/docmind/storage
       - hf_cache:/app/.cache/huggingface
@@ -80,6 +84,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+        
     volumes:
       - ../backend/app:/app/app
       - ../backend/alembic:/app/backend/alembic

@@ -44,13 +44,13 @@ from app.models.document import Document
 from app.models.enums import DocumentStatus
 from app.rag.ingestion import embed_in_batches
 from app.rag.retrieval.context import build_passages, render_context
+from app.rag.retrieval.query_preprocess import QueryPreprocess
 from app.rag.retrieval.ranking import mmr_select, reciprocal_rank_fusion
 from app.rag.retrieval.rerank import Reranker
 from app.rag.retrieval.types import Candidate, RetrievalResult
 from app.services.llm_clients import get_embedder
 
 log = get_logger(__name__)
-
 
 # Columns fetched for every candidate. Keep in sync with
 # ``Candidate``'s fields — ``_to_candidate`` reads each column by name.
@@ -156,6 +156,8 @@ class RetrievalService:
         self.session = session
         self.cfg = cfg or RetrievalSettings()
         self.docs = DocumentRepository(session)
+        self.qp = QueryPreprocess(language=self.cfg.fts_language)
+
         self.reranker = reranker
 
     async def _validate_scope(self, user_id: UUID, document_ids: list[UUID]) -> None:
@@ -289,28 +291,22 @@ class RetrievalService:
     ) -> list[Candidate]:
         """Full-text search via Postgres ``ts_rank_cd``.
 
-        Uses ``websearch_to_tsquery``, which never raises on arbitrary
-        user input (quotes, ``OR``, ``-exclusion`` are all handled).
-
-        Args:
-            user_id: Owner filter. Applied via ``_scope``.
-            query: Raw user query. Passed through as-is to
-                ``websearch_to_tsquery``; no sanitization is needed.
-            document_ids: Optional allow-list. Ownership must already
-                be verified by the caller.
-            limit: Maximum number of candidates to return.
-            language: Postgres text-search configuration name. Must
-                match the one used when populating ``text_search``.
+        Builds an OR ``to_tsquery`` from alphanumeric tokens. AND-style
+        helpers such as ``websearch_to_tsquery`` drop a chunk if any
+        question term is missing, which is too strict for RAG candidate
+        generation. OR keeps high recall; ``ts_rank_cd`` orders by how
+        many tokens matched.
 
         Returns:
-            Candidates sorted by descending relevance, with
-            ``keyword_rank`` (1-based) and ``keyword_score`` (the
-            normalized ts_rank_cd value in [0, 1]) populated.
-            Returns an empty list if the query has no lexical match.
+            Candidates sorted by descending ``ts_rank_cd``. Empty if the
+            query tokenizes to nothing or has no lexical match.
         """
-        # websearch_to_tsquery never raises on user input (quotes, OR, -exclusion).
-        tsq = func.websearch_to_tsquery(language, query)
-        rank = func.ts_rank_cd(DocumentChunk.text_search, tsq, 32).label("rank")  # 32 = normalize to 0..1
+
+        tsq = self.qp.to_tsquery(query)
+        if tsq is None:
+            return []
+
+        rank = func.ts_rank_cd(DocumentChunk.text_search, tsq, 32).label("rank")
         stmt = _scope(select(*_COLS, rank), user_id, document_ids).where(DocumentChunk.text_search.op("@@")(tsq)).order_by(rank.desc()).limit(limit)
         out = []
         for i, r in enumerate((await self.session.execute(stmt)).all(), start=1):
@@ -382,14 +378,12 @@ class RetrievalService:
             finally:
                 timings[name] = round((time.perf_counter() - t0) * 1000, 1)
 
-        query = " ".join(query.split())
-        if not query:
-            raise ValueError("query must not be empty")
+        query = self.qp.normalize(query)
 
         # 1. Embedding (network) and keyword search (DB) run concurrently.
         #    Only ONE coroutine touches the AsyncSession, which is required:
         #    a single session must never run concurrent queries.
-        with timed("embed"):
+        with timed("embed+keyword"):
             embed_task = asyncio.create_task(self._embed(query))
             try:
                 keyword = await self.keyword_search(

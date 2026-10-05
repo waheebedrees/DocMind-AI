@@ -87,7 +87,7 @@ curl -s  "${API}/api/v1/auth/me" -H "Authorization: Bearer ${TOKEN}"
 hr
 say "Upload test document"
 TEST_FILE="./docs/SDR External NDA revised_waheeb_e.pdf"
-# TEST_FILE="./docs/zerostrike_project (6).pdf"
+TEST_FILE="./docs/zerostrike_project (6).pdf"
 
 DOC_TITLE="Python history ${RUN_ID}"
 
@@ -105,11 +105,11 @@ echo "    document_id=${DOC_ID}"
 reprocess_response=$(curl -s -X POST "${API}/api/v1/documents/${DOC_ID}/reprocess" \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "{\"from_stage\":\"chunk\"}")
+  -d "{\"from_stage\":\"clean\"}")
 
 
 hr 
-echo "reprocess_response = ${reprocess_response}"
+# echo "reprocess_response = ${reprocess_response}"
 hr
 say "Polling document status (max 60s)"
 STATUS=""
@@ -236,7 +236,5 @@ import sys, json
 d = json.load(sys.stdin)
 r = d.get('reranked')
 print(f\"    reranked={r}\")
-if not r:
-    print('    (no reranker configured — set RETRIEVAL__RERANK_URL and run TEI)')
 print(f\"    timings_ms={d.get('timings_ms')}\")
 "

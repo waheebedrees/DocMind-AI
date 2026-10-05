@@ -20,4 +20,3 @@ async def create_arq_pool() -> ArqRedis:
             password=settings.redis_password,
         )
     )
-
