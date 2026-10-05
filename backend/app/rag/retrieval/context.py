@@ -70,10 +70,19 @@ def build_passages(
     return passages
 
 
+
 def render_context(passages: list[Passage]) -> str:
     blocks = []
     for p in passages:
-        loc = f"p.{p.page_start}" if p.page_start == p.page_end else f"pp.{p.page_start}-{p.page_end}"
-        header = f"[{p.citation_id}] {p.section or ''} ({loc if p.page_start else 'n/a'})".strip()
-        blocks.append(f"{header}\n{p.text}")
+        if p.page_start is None:
+            loc = "n/a"
+        elif p.page_start == p.page_end:
+            loc = f"p.{p.page_start}"
+        else:
+            loc = f"pp.{p.page_start}-{p.page_end}"
+
+        label = f"[{p.citation_id}]"
+        if p.section:
+            label = f"{label} {p.section}"
+        blocks.append(f"{label} ({loc})\n{p.text}")
     return "\n\n---\n\n".join(blocks)
