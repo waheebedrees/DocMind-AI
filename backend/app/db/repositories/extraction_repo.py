@@ -130,3 +130,14 @@ class ExtractionRepository(BaseRepository[Extraction]):
         """
         stmt = delete(Extraction).where(Extraction.document_id == document_id)
         return await self.execute_rowcount(stmt)
+
+    async def get(self, extraction_id: UUID) -> Extraction | None:
+        """Fetch an extraction by primary key.
+
+        Args:
+            extraction_id (UUID): primary key.
+
+        Returns:
+            Extraction | None: the extraction, or None if not found.
+        """
+        return await self.session.get(Extraction, extraction_id)

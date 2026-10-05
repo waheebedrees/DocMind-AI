@@ -777,7 +777,7 @@ class TestRetrieve:
         )
         with p1, p2, p3, p4:
             out = await service.retrieve(user_id=USER_ID, query="hello")
-        assert "embed" in out.timings_ms
+        assert "embed+keyword" in out.timings_ms
         assert "vector" in out.timings_ms
         assert "mmr" in out.timings_ms
         assert "expand" in out.timings_ms

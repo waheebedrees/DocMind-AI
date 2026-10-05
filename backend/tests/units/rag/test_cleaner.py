@@ -14,7 +14,7 @@ import pytest
 from app.rag.cleaning import (
     _clean_text,
     _is_toc_document,
-    _toc_item_indices,
+    _toc_items,
     clean_document,
 )
 
@@ -29,7 +29,6 @@ class _FakeDoc:
         self.texts = [_Item(t) for t in texts]
 
 
-# --- _clean_text ----------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -72,26 +71,39 @@ def test_clean_text(raw: str, expected: str) -> None:
     assert _clean_text(raw) == expected
 
 
-# --- _toc_item_indices ----------------------------------------------
+
+
+# --- _toc_items ------------------------------------------------------
 
 
 @pytest.mark.parametrize(
-    "texts, expected",
+    "texts, expected_count",
     [
-        ([], set()),
-        (["no dots here"], set()),
-        (["a........5"], {0}),
-        (["a........5", "b........6"], {0, 1}),
-        (["....5", "clean", "...10"], {0, 2}),
-        ([None], set()),
-        (["..5"], set()),  # only 2 dots
-        (["....no digits"], set()),  # no page number
-        (["item 1.2.3"], set()),  # single dots between digits
+        ([], 0),
+        (["no dots here"], 0),
+        (["a........5"], 1),
+        (["a........5", "b........6"], 2),
+        (["....5", "clean", "...10"], 2),
+        ([None], 0),
+        (["..5"], 0),              # only 2 dots
+        (["....no digits"], 0),    # no page number
+        (["item 1.2.3"], 0),       # single dots between digits
     ],
 )
-def test_toc_item_indices(texts, expected):
+def test_toc_items(texts, expected_count):
     doc = _FakeDoc(texts)
-    assert _toc_item_indices(doc) == expected
+    assert len(_toc_items(doc)) == expected_count
+
+
+def test_toc_items_returns_item_objects_not_indices():
+    """The cleaner needs the actual items to pass to delete_items."""
+    doc = _FakeDoc(["a........5", "clean", "b........6"])
+    items = _toc_items(doc)
+    assert [i.text for i in items] == ["a........5", "b........6"]
+    # Each returned element is the same object as in doc.texts, so
+    # delete_items can identify it by identity.
+    assert items[0] is doc.texts[0]
+    assert items[1] is doc.texts[2]
 
 
 # --- _is_toc_document -----------------------------------------------
@@ -104,12 +116,12 @@ def _toc_doc(pages: list[int]) -> _FakeDoc:
 
 def test_is_toc_below_threshold():
     doc = _toc_doc([1, 2, 3, 4])
-    assert _is_toc_document(doc, _toc_item_indices(doc)) is False
+    assert _is_toc_document(doc, _toc_items(doc)) is False
 
 
 def test_is_toc_clustered_and_ascending():
     doc = _toc_doc([1, 11, 21, 31, 41])
-    assert _is_toc_document(doc, _toc_item_indices(doc)) is True
+    assert _is_toc_document(doc, _toc_items(doc)) is True
 
 
 def test_is_toc_unclustered_fails():
@@ -117,19 +129,17 @@ def test_is_toc_unclustered_fails():
     for i in (0, 10, 20, 30, 40):
         texts[i] = f"Item........{i + 1}"
     doc = _FakeDoc(texts)
-    assert _is_toc_document(doc, _toc_item_indices(doc)) is False
+    assert _is_toc_document(doc, _toc_items(doc)) is False
 
 
 def test_is_toc_not_ascending_fails():
     doc = _toc_doc([50, 40, 30, 20, 10])
-    assert _is_toc_document(doc, _toc_item_indices(doc)) is False
+    assert _is_toc_document(doc, _toc_items(doc)) is False
 
 
 def test_is_toc_empty_document():
     doc = _FakeDoc([])
-    assert _is_toc_document(doc, _toc_item_indices(doc)) is False
-
-
+    assert _is_toc_document(doc, _toc_items(doc)) is False
 # --- clean_document -------------------------------------------------
 
 
@@ -168,8 +178,11 @@ def test_clean_document_empty_document():
     assert stats["changed"] == 0
     assert stats["toc_detected"] is False
 
-
 def test_clean_document_prunes_detected_toc():
+    from docling_core.types.doc import DoclingDocument
+    from docling_core.types.doc.labels import DocItemLabel
+
+    doc = DoclingDocument(name="t")
     toc = [
         "Introduction........1",
         "Chapter One.........5",
@@ -177,8 +190,12 @@ def test_clean_document_prunes_detected_toc():
         "Chapter Three.......20",
         "Chapter Four........30",
     ]
+    for line in toc:
+        doc.add_text(label=DocItemLabel.TEXT, text=line)
     body = ["body one", "body two", "body three"]
-    doc = _FakeDoc(toc + body)
+    for line in body:
+        doc.add_text(label=DocItemLabel.TEXT, text=line)
+
     stats = clean_document(doc)
 
     assert stats["toc_detected"] is True
@@ -186,7 +203,9 @@ def test_clean_document_prunes_detected_toc():
     assert stats["pruned"] == 5
     assert stats["text_items"] == 3
     assert [t.text for t in doc.texts] == body
-
+    # Ref graph must survive the round trip.
+    reloaded = DoclingDocument.model_validate_json(doc.model_dump_json())
+    assert len(reloaded.texts) == 3
 
 def test_clean_document_does_not_prune_when_no_toc():
     doc = _FakeDoc(
@@ -221,9 +240,17 @@ def test_clean_document_does_not_prune_below_toc_threshold():
 def test_clean_runs_before_toc_detection():
     """Dot leaders broken by zero-width chars only become detectable
     after cleaning, so cleaning must run first."""
+    from docling_core.types.doc import DoclingDocument
+    from docling_core.types.doc.labels import DocItemLabel
+
     zw = "\u200b"
-    toc = [f"Item {i}{zw}.{zw}.{zw}.{zw}.{i * 10 + 1}" for i in range(5)]
-    doc = _FakeDoc(toc)
+    doc = DoclingDocument(name="t")
+    for i in range(5):
+        doc.add_text(
+            label=DocItemLabel.TEXT,
+            text=f"Item {i}{zw}.{zw}.{zw}.{zw}.{i * 10 + 1}",
+        )
+
     stats = clean_document(doc)
     assert stats["toc_detected"] is True
     assert stats["pruned"] == 5
