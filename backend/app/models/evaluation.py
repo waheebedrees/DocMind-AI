@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.models.enums import EvaluationStatus, enum_column
-from app.models.mixins import TimestampMixin, UUIDMixin
+from app.models.mixins import TimestampMixin
 
 
 class EvaluationRun(TimestampMixin, Base):

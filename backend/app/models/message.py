@@ -10,8 +10,8 @@ from app.models.enums import MessageRole, enum_column
 from app.models.mixins import TimestampMixin
 
 if TYPE_CHECKING:
-    from app.models.conversation import Conversation
     from app.models.citation import Citation
+    from app.models.conversation import Conversation
 
 
 class Message(TimestampMixin, Base):
@@ -27,6 +27,4 @@ class Message(TimestampMixin, Base):
 
     conversation: Mapped["Conversation"] = relationship(back_populates="messages")
 
-    citations: Mapped[list["Citation"]] = relationship(
-        back_populates="message", cascade="all, delete-orphan"
-    )
+    citations: Mapped[list["Citation"]] = relationship(back_populates="message", cascade="all, delete-orphan")
