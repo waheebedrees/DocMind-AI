@@ -16,7 +16,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool  # noqa: E402
 
 
-
 @pytest_asyncio.fixture(scope="session")
 async def engine():
     eng = create_async_engine(
@@ -34,8 +33,7 @@ async def engine():
 
 @pytest_asyncio.fixture
 async def db(engine):
-    session_factory = async_sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with session_factory() as session:
         yield session
         await session.rollback()
@@ -43,8 +41,7 @@ async def db(engine):
 
 @pytest_asyncio.fixture
 async def session(engine):
-    session_factory = async_sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with session_factory() as session:
         yield session
         await session.rollback()

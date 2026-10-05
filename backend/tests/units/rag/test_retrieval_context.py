@@ -4,11 +4,8 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-import pytest
-
 from app.rag.retrieval.context import build_passages, render_context
 from app.rag.retrieval.types import Candidate, Passage
-
 
 DOC_A = UUID("11111111-2222-3333-4444-555555555555")
 DOC_B = UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
@@ -75,7 +72,7 @@ def test_gap_splits_into_separate_passages():
 def test_neighbor_outside_window_is_not_included():
     """A neighbor at ±2 with window=1 is not pulled into the passage."""
     s = make_candidate(chunk_index=0, text="a", rerank_score=0.9)
-    n = make_candidate(chunk_index=2, text="b")   # outside 0±1
+    n = make_candidate(chunk_index=2, text="b")  # outside 0±1
     out = build_passages([s], [n], window=1, max_tokens=1000)
     assert len(out) == 1
     assert out[0].chunk_range == (0, 0)
@@ -157,12 +154,22 @@ def test_selected_overrides_neighbor_with_same_position():
     """If a chunk appears in both lists, the selected version wins (scores)."""
     shared_id = uuid4()
     n = Candidate(
-        chunk_id=shared_id, document_id=DOC_A, chunk_index=0, text="n",
-        page_number=None, section=None, token_count=None,
+        chunk_id=shared_id,
+        document_id=DOC_A,
+        chunk_index=0,
+        text="n",
+        page_number=None,
+        section=None,
+        token_count=None,
     )
     s = Candidate(
-        chunk_id=shared_id, document_id=DOC_A, chunk_index=0, text="s",
-        page_number=None, section=None, token_count=None,
+        chunk_id=shared_id,
+        document_id=DOC_A,
+        chunk_index=0,
+        text="s",
+        page_number=None,
+        section=None,
+        token_count=None,
         rerank_score=0.9,
     )
     out = build_passages([s], [n], window=0, max_tokens=1000)

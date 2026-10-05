@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy.exc import IntegrityError
-
 from app.db.repositories.extraction_repo import ExtractionRepository
+from sqlalchemy.exc import IntegrityError
 
 pytestmark = pytest.mark.asyncio
 
@@ -53,9 +52,7 @@ class TestCreate:
 
 class TestGet:
     async def test_returns_extraction_when_found(self, repo, document):
-        row = await repo.create(
-            document_id=document.id, schema_name="s", data={}, confidence=0.5
-        )
+        row = await repo.create(document_id=document.id, schema_name="s", data={}, confidence=0.5)
         assert (await repo.get(row.id)).id == row.id
 
     async def test_returns_none_when_missing(self, repo):
@@ -90,9 +87,7 @@ class TestGetForDocumentBySchema:
 
         await repo.create(document_id=document.id, schema_name="invoice", data={"v": 1}, confidence=0.5)
         await asyncio.sleep(0.001)
-        newest = await repo.create(
-            document_id=document.id, schema_name="invoice", data={"v": 2}, confidence=0.5
-        )
+        newest = await repo.create(document_id=document.id, schema_name="invoice", data={"v": 2}, confidence=0.5)
         got = await repo.get_for_document_by_schema(document.id, "invoice")
         assert got.id == newest.id
 
@@ -103,31 +98,21 @@ class TestGetForDocumentBySchema:
 
 class TestListNeedingReview:
     async def test_returns_only_flagged(self, repo, document):
-        flagged = await repo.create(
-            document_id=document.id, schema_name="s", data={}, confidence=0.1, needs_review=True
-        )
-        await repo.create(
-            document_id=document.id, schema_name="s", data={}, confidence=0.9, needs_review=False
-        )
+        flagged = await repo.create(document_id=document.id, schema_name="s", data={}, confidence=0.1, needs_review=True)
+        await repo.create(document_id=document.id, schema_name="s", data={}, confidence=0.9, needs_review=False)
         rows = await repo.list_needing_review()
         assert [r.id for r in rows] == [flagged.id]
 
     async def test_can_filter_to_one_document(self, repo, document, other_document):
-        await repo.create(
-            document_id=document.id, schema_name="s", data={}, confidence=0.1, needs_review=True
-        )
-        await repo.create(
-            document_id=other_document.id, schema_name="s", data={}, confidence=0.1, needs_review=True
-        )
+        await repo.create(document_id=document.id, schema_name="s", data={}, confidence=0.1, needs_review=True)
+        await repo.create(document_id=other_document.id, schema_name="s", data={}, confidence=0.1, needs_review=True)
         rows = await repo.list_needing_review(document_id=document.id)
         assert all(r.document_id == document.id for r in rows)
 
 
 class TestSetNeedsReview:
     async def test_flips_flag(self, repo, document):
-        row = await repo.create(
-            document_id=document.id, schema_name="s", data={}, confidence=0.5
-        )
+        row = await repo.create(document_id=document.id, schema_name="s", data={}, confidence=0.5)
         await repo.set_needs_review(row.id, True)
         assert row.needs_review is True
         await repo.set_needs_review(row.id, False)

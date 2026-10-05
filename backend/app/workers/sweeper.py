@@ -30,7 +30,7 @@ from app.db.session import AsyncSessionLocal
 from app.models.document import Document
 from app.models.enums import JobStatus
 from app.services.storage import BaseStorage
-from app.services.storage.base import ObjectNotFound, InvalidKey
+from app.services.storage.base import _PIPELINE_KEY_RE, InvalidKey, ObjectNotFound
 from app.services.storage.keys import (
     chunks_key,
     clean_key,
@@ -38,7 +38,6 @@ from app.services.storage.keys import (
     parsed_key,
 )
 from app.workers.tasks import _STAGE_TASK
-from app.services.storage.base import _PIPELINE_KEY_RE
 
 log = get_logger(__name__)
 
@@ -116,16 +115,18 @@ async def _load_live_keys(session: AsyncSession) -> tuple[set[str], set[tuple[UU
     Returns:
         A ``(live_keys, live_prefixes)`` tuple.
     """
-    result = (await session.execute(
-        select(
-            Document.storage_key,
-            Document.parsed_key,
-            Document.content_hash,
-            Document.user_id,
-            Document.id,
+    result = (
+        await session.execute(
+            select(
+                Document.storage_key,
+                Document.parsed_key,
+                Document.content_hash,
+                Document.user_id,
+                Document.id,
+            )
         )
-    )).all()
-    
+    ).all()
+
     live: set[str] = set()
     prefixes: set[tuple[UUID, UUID]] = set()
 
@@ -237,7 +238,6 @@ async def sweep_orphans(ctx: dict) -> str:
     async for key, last_modified in storage.list_keys():
         scanned += 1
 
-
         if _is_live(key, live_keys, live_prefixes):
             continue
 
@@ -255,7 +255,7 @@ async def sweep_orphans(ctx: dict) -> str:
             pass
         except InvalidKey:
             log.warning("orphan_bad_key", key=key)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - best-effort orphan cleanup
             log.warning("orphan_delete_failed", key=key, error=str(exc))
             continue
 

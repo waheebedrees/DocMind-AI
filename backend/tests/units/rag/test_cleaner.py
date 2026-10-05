@@ -11,7 +11,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pytest
-
 from app.rag.cleaning import (
     _clean_text,
     _is_toc_document,
@@ -37,10 +36,10 @@ class _FakeDoc:
     "raw, expected",
     [
         # NFKC normalization
-        ("\ufb01le", "file"),              # ﬁ ligature
-        ("\uff11\uff12\uff13", "123"),     # fullwidth digits
-        ("\uff21\uff22\uff23", "ABC"),     # fullwidth letters
-        ("\u00a0hello", "hello"),          # NBSP -> space -> strip
+        ("\ufb01le", "file"),  # ﬁ ligature
+        ("\uff11\uff12\uff13", "123"),  # fullwidth digits
+        ("\uff21\uff22\uff23", "ABC"),  # fullwidth letters
+        ("\u00a0hello", "hello"),  # NBSP -> space -> strip
         # zero-width stripping
         ("a\u200bb", "ab"),
         ("a\u200cb", "ab"),
@@ -53,8 +52,8 @@ class _FakeDoc:
         # newline collapse
         ("a\n\n\nb", "a\n\nb"),
         ("a\n\n\n\n\nb", "a\n\nb"),
-        ("a\n\nb", "a\n\nb"),              # unchanged
-        ("a\nb", "a\nb"),                  # unchanged
+        ("a\n\nb", "a\n\nb"),  # unchanged
+        ("a\nb", "a\nb"),  # unchanged
         # strip
         ("  hello  ", "hello"),
         ("\n\nhello\n\n", "hello"),
@@ -85,9 +84,9 @@ def test_clean_text(raw: str, expected: str) -> None:
         (["a........5", "b........6"], {0, 1}),
         (["....5", "clean", "...10"], {0, 2}),
         ([None], set()),
-        (["..5"], set()),             # only 2 dots
-        (["....no digits"], set()),   # no page number
-        (["item 1.2.3"], set()),      # single dots between digits
+        (["..5"], set()),  # only 2 dots
+        (["....no digits"], set()),  # no page number
+        (["item 1.2.3"], set()),  # single dots between digits
     ],
 )
 def test_toc_item_indices(texts, expected):

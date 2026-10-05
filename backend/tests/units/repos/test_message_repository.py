@@ -5,10 +5,9 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-
-from app.models.enums import MessageRole
 from app.db.repositories.conversation_repo import ConversationRepository
 from app.db.repositories.message_repo import MessageRepository
+from app.models.enums import MessageRole
 
 pytestmark = pytest.mark.asyncio
 
@@ -58,9 +57,7 @@ class TestCreate:
 
 class TestGet:
     async def test_returns_message_when_found(self, repo, conversation):
-        msg = await repo.create(
-            conversation_id=conversation.id, role=MessageRole.USER, content="x"
-        )
+        msg = await repo.create(conversation_id=conversation.id, role=MessageRole.USER, content="x")
         got = await repo.get(msg.id)
         assert got is not None
         assert got.id == msg.id
@@ -92,10 +89,7 @@ class TestListForConversation:
 
 class TestLatestForConversation:
     async def test_returns_n_newest_oldest_first(self, repo, conversation):
-        msgs = [
-            await repo.create(conversation_id=conversation.id, role=MessageRole.USER, content=str(i))
-            for i in range(5)
-        ]
+        msgs = [await repo.create(conversation_id=conversation.id, role=MessageRole.USER, content=str(i)) for i in range(5)]
         rows = await repo.latest_for_conversation(conversation.id, limit=3)
         assert [m.id for m in rows] == [msgs[2].id, msgs[3].id, msgs[4].id]
 

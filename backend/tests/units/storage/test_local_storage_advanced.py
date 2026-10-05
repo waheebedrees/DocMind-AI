@@ -17,16 +17,13 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-
 from app.services.storage.base import (
-    _PIPELINE_KEY_RE,
     InvalidKey,
     ObjectNotFound,
     UnsupportedMime,
     UploadTooLarge,
 )
 from app.services.storage.local import LocalStorage
-
 
 USER_ID = UUID("11111111-2222-3333-4444-555555555555")
 OTHER_USER_ID = UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
@@ -120,9 +117,7 @@ class TestResolve:
 class TestPutStream:
     async def test_roundtrip(self, storage):
         body = b"hello world\n"
-        obj = await storage.put_stream(
-            user_id=USER_ID, stream=agen(body), filename="a.txt", max_bytes=1000
-        )
+        obj = await storage.put_stream(user_id=USER_ID, stream=agen(body), filename="a.txt", max_bytes=1000)
         assert obj.content_hash == hashlib.sha256(body).hexdigest()
         assert obj.size_bytes == len(body)
         assert obj.deduplicated is False
@@ -133,31 +128,21 @@ class TestPutStream:
     async def test_multichunk_stream_reassembled(self, storage):
         chunks = [b"a" * 100, b"b" * 100, b"c" * 100]
         body = b"".join(chunks)
-        obj = await storage.put_stream(
-            user_id=USER_ID, stream=agen(*chunks), filename="a.txt", max_bytes=1_000_000
-        )
+        obj = await storage.put_stream(user_id=USER_ID, stream=agen(*chunks), filename="a.txt", max_bytes=1_000_000)
         got = b"".join([c async for c in storage.get(obj.key)])
         assert got == body
 
     async def test_dedup_same_user(self, storage):
         body = b"same content\n"
-        first = await storage.put_stream(
-            user_id=USER_ID, stream=agen(body), filename="a.txt", max_bytes=1000
-        )
-        second = await storage.put_stream(
-            user_id=USER_ID, stream=agen(body), filename="a.txt", max_bytes=1000
-        )
+        first = await storage.put_stream(user_id=USER_ID, stream=agen(body), filename="a.txt", max_bytes=1000)
+        second = await storage.put_stream(user_id=USER_ID, stream=agen(body), filename="a.txt", max_bytes=1000)
         assert second.deduplicated is True
         assert second.key == first.key
 
     async def test_no_dedup_across_users(self, storage):
         body = b"same content\n"
-        first = await storage.put_stream(
-            user_id=USER_ID, stream=agen(body), filename="a.txt", max_bytes=1000
-        )
-        second = await storage.put_stream(
-            user_id=OTHER_USER_ID, stream=agen(body), filename="a.txt", max_bytes=1000
-        )
+        first = await storage.put_stream(user_id=USER_ID, stream=agen(body), filename="a.txt", max_bytes=1000)
+        second = await storage.put_stream(user_id=OTHER_USER_ID, stream=agen(body), filename="a.txt", max_bytes=1000)
         assert second.deduplicated is False
         assert second.key != first.key
 
@@ -193,7 +178,7 @@ class TestPutStream:
         assert consumed == 0
         # Nothing left behind
         for p in storage._tmp.iterdir():
-            assert False, f"leaked tmp file: {p}"
+            raise AssertionError(f"leaked tmp file: {p}")
 
     async def test_too_large_raises_and_cleans_tmp(self, storage):
         with pytest.raises(UploadTooLarge):
@@ -278,9 +263,7 @@ class TestPutStream:
 class TestReads:
     async def test_get_yields_all_bytes(self, storage):
         body = b"x" * 10_000
-        obj = await storage.put_stream(
-            user_id=USER_ID, stream=agen(body), filename="a.txt", max_bytes=1_000_000
-        )
+        obj = await storage.put_stream(user_id=USER_ID, stream=agen(body), filename="a.txt", max_bytes=1_000_000)
         got = b"".join([c async for c in storage.get(obj.key)])
         assert got == body
 
@@ -288,9 +271,7 @@ class TestReads:
         storage = LocalStorage(tmp_path, chunk_size=512)
         await storage.startup()
         body = b"y" * 4000
-        obj = await storage.put_stream(
-            user_id=USER_ID, stream=agen(body), filename="a.txt", max_bytes=1_000_000
-        )
+        obj = await storage.put_stream(user_id=USER_ID, stream=agen(body), filename="a.txt", max_bytes=1_000_000)
         sizes = [len(c) async for c in storage.get(obj.key)]
         assert sizes == [512, 512, 512, 512, 512, 512, 512, 416]
 
@@ -311,18 +292,14 @@ class TestReads:
 
     async def test_open_stream_roundtrip(self, storage):
         body = b"hello\n"
-        obj = await storage.put_stream(
-            user_id=USER_ID, stream=agen(body), filename="a.txt", max_bytes=1000
-        )
+        obj = await storage.put_stream(user_id=USER_ID, stream=agen(body), filename="a.txt", max_bytes=1000)
         stream = await storage.open_stream(obj.key)
         got = b"".join([c async for c in stream])
         assert got == body
 
     async def test_materialize_yields_real_path(self, storage):
         body = b"materialize me\n"
-        obj = await storage.put_stream(
-            user_id=USER_ID, stream=agen(body), filename="a.txt", max_bytes=1000
-        )
+        obj = await storage.put_stream(user_id=USER_ID, stream=agen(body), filename="a.txt", max_bytes=1000)
         async with storage.materialize(obj.key) as path:
             assert path.read_bytes() == body
             assert path.is_absolute()
@@ -344,16 +321,12 @@ class TestReads:
 
 class TestDelete:
     async def test_delete_removes_object(self, storage):
-        obj = await storage.put_stream(
-            user_id=USER_ID, stream=agen(PDF), filename="a.pdf", max_bytes=10_000
-        )
+        obj = await storage.put_stream(user_id=USER_ID, stream=agen(PDF), filename="a.pdf", max_bytes=10_000)
         await storage.delete(obj.key)
         assert not await storage.exists(obj.key)
 
     async def test_delete_is_idempotent(self, storage):
-        obj = await storage.put_stream(
-            user_id=USER_ID, stream=agen(PDF), filename="a.pdf", max_bytes=10_000
-        )
+        obj = await storage.put_stream(user_id=USER_ID, stream=agen(PDF), filename="a.pdf", max_bytes=10_000)
         await storage.delete(obj.key)
         await storage.delete(obj.key)  # must not raise
 
@@ -361,21 +334,15 @@ class TestDelete:
         """When the last object in a {hash[:2]} shard is deleted, the
         shard directory should be pruned. Otherwise content-addressed
         storage accumulates 256 empty dirs per user."""
-        obj = await storage.put_stream(
-            user_id=USER_ID, stream=agen(PDF), filename="a.pdf", max_bytes=10_000
-        )
+        obj = await storage.put_stream(user_id=USER_ID, stream=agen(PDF), filename="a.pdf", max_bytes=10_000)
         shard = storage._root / str(USER_ID) / obj.content_hash[:2]
         assert shard.is_dir()
         await storage.delete(obj.key)
         assert not shard.exists()
 
     async def test_delete_keeps_shard_with_siblings(self, storage):
-        a = await storage.put_stream(
-            user_id=USER_ID, stream=agen(PDF + b"a"), filename="a.pdf", max_bytes=10_000
-        )
-        b = await storage.put_stream(
-            user_id=USER_ID, stream=agen(PDF + b"b"), filename="b.pdf", max_bytes=10_000
-        )
+        a = await storage.put_stream(user_id=USER_ID, stream=agen(PDF + b"a"), filename="a.pdf", max_bytes=10_000)
+        b = await storage.put_stream(user_id=USER_ID, stream=agen(PDF + b"b"), filename="b.pdf", max_bytes=10_000)
         # Force the same shard by choosing a suffix that lands in the
         # same bucket — skip if not
         if a.content_hash[:2] != b.content_hash[:2]:
@@ -387,13 +354,9 @@ class TestDelete:
 
     async def test_delete_then_reupload(self, storage):
         body = PDF + b"content"
-        obj = await storage.put_stream(
-            user_id=USER_ID, stream=agen(body), filename="a.pdf", max_bytes=10_000
-        )
+        obj = await storage.put_stream(user_id=USER_ID, stream=agen(body), filename="a.pdf", max_bytes=10_000)
         await storage.delete(obj.key)
-        again = await storage.put_stream(
-            user_id=USER_ID, stream=agen(body), filename="a.pdf", max_bytes=10_000
-        )
+        again = await storage.put_stream(user_id=USER_ID, stream=agen(body), filename="a.pdf", max_bytes=10_000)
         assert again.deduplicated is False
         assert again.key == obj.key
 
@@ -431,7 +394,6 @@ class TestPutGetBytes:
         with pytest.raises(InvalidKey):
             await storage.put_bytes("/tmp/x", b"nope")
 
-
     async def test_put_bytes_rejects_traversal(self, storage):
         with pytest.raises(InvalidKey):
             await storage.put_bytes("../../escape", b"nope")
@@ -439,7 +401,8 @@ class TestPutGetBytes:
     async def test_get_bytes_rejects_absolute_key(self, storage):
         with pytest.raises(InvalidKey):
             await storage.get_bytes("/etc/passwd")
-            
+
+
 # ====================================================================
 # delete_raw: pipeline keys only
 # ====================================================================
@@ -473,20 +436,14 @@ class TestDeleteRaw:
 
 class TestListKeys:
     async def test_yields_all_user_objects(self, storage):
-        a = await storage.put_stream(
-            user_id=USER_ID, stream=agen(PDF + b"a"), filename="a.pdf", max_bytes=10_000
-        )
-        b = await storage.put_stream(
-            user_id=USER_ID, stream=agen(PDF + b"b"), filename="b.pdf", max_bytes=10_000
-        )
+        a = await storage.put_stream(user_id=USER_ID, stream=agen(PDF + b"a"), filename="a.pdf", max_bytes=10_000)
+        b = await storage.put_stream(user_id=USER_ID, stream=agen(PDF + b"b"), filename="b.pdf", max_bytes=10_000)
         keys = [k async for k, _ in storage.list_keys()]
         assert a.key in keys
         assert b.key in keys
 
     async def test_skips_tmp(self, storage):
-        await storage.put_stream(
-            user_id=USER_ID, stream=agen(PDF), filename="a.pdf", max_bytes=10_000
-        )
+        await storage.put_stream(user_id=USER_ID, stream=agen(PDF), filename="a.pdf", max_bytes=10_000)
         # Simulate an in-flight upload
         in_flight = storage._tmp / uuid4().hex
         in_flight.write_bytes(b"in progress")
@@ -494,9 +451,7 @@ class TestListKeys:
         assert all("tmp" not in k for k in keys)
 
     async def test_yields_mtime(self, storage):
-        await storage.put_stream(
-            user_id=USER_ID, stream=agen(PDF), filename="a.pdf", max_bytes=10_000
-        )
+        await storage.put_stream(user_id=USER_ID, stream=agen(PDF), filename="a.pdf", max_bytes=10_000)
         items = [item async for item in storage.list_keys()]
         assert len(items) >= 1
         _, mtime = items[0]
@@ -511,21 +466,19 @@ class TestListKeys:
 
 class TestExists:
     async def test_true_for_present_object(self, storage):
-        obj = await storage.put_stream(
-            user_id=USER_ID, stream=agen(PDF), filename="a.pdf", max_bytes=10_000
-        )
+        obj = await storage.put_stream(user_id=USER_ID, stream=agen(PDF), filename="a.pdf", max_bytes=10_000)
         assert await storage.exists(obj.key) is True
 
     async def test_false_for_missing_object(self, storage):
         assert await storage.exists(_valid_key(USER_ID)) is False
-
 
     async def test_exists_raises_for_invalid_key(self, storage):
         """exists() validates the key shape and raises rather than
         returning False — same contract as get() and delete()."""
         with pytest.raises(InvalidKey):
             await storage.exists("/etc/passwd")
-            
+
+
 # ====================================================================
 # startup
 # ====================================================================

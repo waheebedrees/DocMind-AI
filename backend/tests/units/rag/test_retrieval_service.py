@@ -20,7 +20,6 @@ from uuid import UUID, uuid4
 
 import numpy as np
 import pytest
-
 from app.core.exceptions import (
     DocumentNotReady,
     EmbeddingUnavailable,
@@ -30,34 +29,31 @@ from app.models.enums import DocumentStatus
 from app.rag.retrieval.retrieval import RetrievalService
 from app.rag.retrieval.types import Candidate
 
-
 USER_ID = UUID("11111111-2222-3333-4444-555555555555")
 DOC_ID = UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 DOC_ID_2 = UUID("cccccccc-dddd-eeee-ffff-000000000000")
 EMBED_DIM = 384
 
 
-
-
 def make_cfg(**overrides) -> SimpleNamespace:
     """A stand-in for RetrievalSettings with the fields retrieve() reads."""
-    defaults = dict(
-        fts_language="english",
-        keyword_candidates=50,
-        hnsw_ef_search=100,
-        hnsw_iterative_scan=False,
-        vector_candidates=50,
-        rrf_k=60,
-        vector_weight=1.0,
-        keyword_weight=1.0,
-        rerank_candidates=30,
-        rerank_enabled=False,
-        rerank_min_score=None,
-        rerank_timeout_s=10.0,
-        mmr_lambda=0.5,
-        neighbor_window=1,
-        max_context_tokens=4000,
-    )
+    defaults = {
+        "fts_language": "english",
+        "keyword_candidates": 50,
+        "hnsw_ef_search": 100,
+        "hnsw_iterative_scan": False,
+        "vector_candidates": 50,
+        "rrf_k": 60,
+        "vector_weight": 1.0,
+        "keyword_weight": 1.0,
+        "rerank_candidates": 30,
+        "rerank_enabled": False,
+        "rerank_min_score": None,
+        "rerank_timeout_s": 10.0,
+        "mmr_lambda": 0.5,
+        "neighbor_window": 1,
+        "max_context_tokens": 4000,
+    }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
 
@@ -82,30 +78,29 @@ def make_row(
         page_number=None,
         section=None,
         token_count=token_count,
-        embedding=embedding if embedding is not None else np.zeros(
-            EMBED_DIM, dtype=np.float32),
+        embedding=embedding if embedding is not None else np.zeros(EMBED_DIM, dtype=np.float32),
         distance=distance,
         rank=rank,
     )
 
 
 def make_candidate(**overrides) -> Candidate:
-    defaults = dict(
-        chunk_id=uuid4(),
-        document_id=uuid4(),
-        chunk_index=0,
-        text="text",
-        page_number=None,
-        section=None,
-        token_count=10,
-        embedding=None,
-        vector_rank=None,
-        keyword_rank=None,
-        vector_score=None,
-        keyword_score=None,
-        fused_score=0.0,
-        rerank_score=None,
-    )
+    defaults = {
+        "chunk_id": uuid4(),
+        "document_id": uuid4(),
+        "chunk_index": 0,
+        "text": "text",
+        "page_number": None,
+        "section": None,
+        "token_count": 10,
+        "embedding": None,
+        "vector_rank": None,
+        "keyword_rank": None,
+        "vector_score": None,
+        "keyword_score": None,
+        "fused_score": 0.0,
+        "rerank_score": None,
+    }
     defaults.update(overrides)
     return Candidate(**defaults)
 
@@ -136,8 +131,6 @@ def service(session: AsyncMock, cfg: SimpleNamespace) -> RetrievalService:
     return RetrievalService(session, cfg=cfg)
 
 
-
-
 class TestValidateScope:
     async def test_all_valid_passes(self, service):
         service.docs.get_for_user = AsyncMock(return_value=make_doc())
@@ -157,9 +150,7 @@ class TestValidateScope:
         assert exc.value.code == "invalid_document_id"
 
     async def test_not_indexed_raises_document_not_ready(self, service):
-        service.docs.get_for_user = AsyncMock(
-            return_value=make_doc(DocumentStatus.PROCESSING)
-        )
+        service.docs.get_for_user = AsyncMock(return_value=make_doc(DocumentStatus.PROCESSING))
         with pytest.raises(DocumentNotReady):
             await service._validate_scope(USER_ID, [DOC_ID])
 
@@ -172,7 +163,6 @@ class TestValidateScope:
         service.docs.get_for_user = AsyncMock(return_value=make_doc())
         await service._validate_scope(USER_ID, [DOC_ID, DOC_ID_2])
         assert service.docs.get_for_user.await_count == 2
-
 
     async def test_stops_on_first_invalid(self, service):
         calls = []
@@ -193,12 +183,12 @@ class TestValidateScope:
 
         assert DOC_ID in calls
         assert calls.index(DOC_ID) == len(calls) - 1  # nothing checked after
-        
+
+
 # --- _neighbors ------------------------------------------------------
 
 
 class TestNeighbors:
-
     async def test_boundary_chunk_fetches_only_the_next_position(self, service, session):
         """With contiguous selected chunks and window=1, only the position
         just past the run is fetched — everything inside the run is already
@@ -215,7 +205,7 @@ class TestNeighbors:
         # (The stmt was built with positions [(doc, 3)]; no way to inspect
         # the WHERE clause without a real DB, but the query running at all
         # is the load-bearing assertion.)
-        
+
     async def test_negative_window_returns_empty(self, service, session):
         assert await service._neighbors([make_candidate()], window=-1) == []
         session.execute.assert_not_awaited()
@@ -248,7 +238,6 @@ class TestNeighbors:
         # We can only assert the query ran without raising.
         session.execute.assert_awaited_once()
 
-
     async def test_boundary_chunk_fetches_next_position(self, service, session):
         """With contiguous selected chunks and window=1, the position just
         past the run is the only one not already selected, so the query
@@ -262,7 +251,8 @@ class TestNeighbors:
         ]
         await service._neighbors(selected, window=1)
         session.execute.assert_awaited_once()
-    
+
+
 # --- vector_search ---------------------------------------------------
 
 
@@ -328,8 +318,7 @@ class TestVectorSearch:
         assert [c.vector_rank for c in out] == [1, 2, 3]
 
     async def test_vector_score_is_one_minus_distance(self, service, session):
-        session.execute.return_value.all.return_value = [
-            make_row(distance=0.25)]
+        session.execute.return_value.all.return_value = [make_row(distance=0.25)]
         out = await service.vector_search(
             user_id=USER_ID,
             embedding=[0.1] * EMBED_DIM,
@@ -432,8 +421,7 @@ class TestEmbed:
 
         with (
             patch("app.rag.retrieval.retrieval.settings") as s,
-            patch("app.rag.retrieval.retrieval.get_embedder",
-                  return_value=object()),
+            patch("app.rag.retrieval.retrieval.get_embedder", return_value=object()),
             patch(
                 "app.rag.retrieval.retrieval.embed_in_batches",
                 new=fake_embed,
@@ -450,13 +438,10 @@ class TestEmbed:
 
         with (
             patch("app.rag.retrieval.retrieval.settings") as s,
-            patch("app.rag.retrieval.retrieval.get_embedder",
-                  return_value=object()),
+            patch("app.rag.retrieval.retrieval.get_embedder", return_value=object()),
             patch("app.rag.retrieval.retrieval.embed_in_batches", new=slow),
         ):
-            s.embedding_spec = SimpleNamespace(
-                query_prefix="", dimension=EMBED_DIM, embed_timeout_s=0.01
-            )
+            s.embedding_spec = SimpleNamespace(query_prefix="", dimension=EMBED_DIM, embed_timeout_s=0.01)
             with pytest.raises(EmbeddingUnavailable):
                 await service._embed("hello")
 
@@ -466,13 +451,10 @@ class TestEmbed:
 
         with (
             patch("app.rag.retrieval.retrieval.settings") as s,
-            patch("app.rag.retrieval.retrieval.get_embedder",
-                  return_value=object()),
+            patch("app.rag.retrieval.retrieval.get_embedder", return_value=object()),
             patch("app.rag.retrieval.retrieval.embed_in_batches", new=broken),
         ):
-            s.embedding_spec = SimpleNamespace(
-                query_prefix="", dimension=EMBED_DIM, embed_timeout_s=5.0
-            )
+            s.embedding_spec = SimpleNamespace(query_prefix="", dimension=EMBED_DIM, embed_timeout_s=5.0)
             with pytest.raises(EmbeddingUnavailable):
                 await service._embed("hello")
 
@@ -482,13 +464,10 @@ class TestEmbed:
 
         with (
             patch("app.rag.retrieval.retrieval.settings") as s,
-            patch("app.rag.retrieval.retrieval.get_embedder",
-                  return_value=object()),
+            patch("app.rag.retrieval.retrieval.get_embedder", return_value=object()),
             patch("app.rag.retrieval.retrieval.embed_in_batches", new=wrong_dim),
         ):
-            s.embedding_spec = SimpleNamespace(
-                query_prefix="", dimension=EMBED_DIM, embed_timeout_s=5.0
-            )
+            s.embedding_spec = SimpleNamespace(query_prefix="", dimension=EMBED_DIM, embed_timeout_s=5.0)
             with pytest.raises(RuntimeError, match="dim"):
                 await service._embed("hello")
 
@@ -532,6 +511,7 @@ class TestRerank:
     async def test_never_raises_on_reranker_failure(self, service):
         """Any exception path must degrade, not propagate — retrieval
         is more important than quality reranking."""
+
         async def weird(*_a, **_kw):
             raise BaseException("even this")  # noqa: TRY002
 
@@ -595,7 +575,8 @@ class TestRetrieve:
         p1, p2, p3, p4 = _patch_pipeline()
         with p1, p2, p3, p4:
             await service.retrieve(
-                user_id=USER_ID, query="  hello   world  ",
+                user_id=USER_ID,
+                query="  hello   world  ",
             )
         # keyword_search receives the normalized query
         assert service.keyword_search.await_args.kwargs["query"] == "hello world"
@@ -608,7 +589,9 @@ class TestRetrieve:
         p1, p2, p3, p4 = _patch_pipeline()
         with p1, p2, p3, p4:
             await service.retrieve(
-                user_id=USER_ID, query="hello", document_ids=[DOC_ID],
+                user_id=USER_ID,
+                query="hello",
+                document_ids=[DOC_ID],
             )
         service._validate_scope.assert_awaited_once_with(USER_ID, [DOC_ID])
 
@@ -642,15 +625,15 @@ class TestRetrieve:
         service._rerank = AsyncMock()
         service._neighbors = AsyncMock(return_value=[])
         p1, p2, p3, p4 = _patch_pipeline(
-            fused=[candidate], mmr_selected=[candidate], passages=[],
+            fused=[candidate],
+            mmr_selected=[candidate],
+            passages=[],
         )
         with p1, p2, p3, p4:
             await service.retrieve(user_id=USER_ID, query="hello")
         service._rerank.assert_not_awaited()
 
-    async def test_rerank_enabled_but_no_reranker_does_not_call_rerank(
-        self, service, cfg
-    ):
+    async def test_rerank_enabled_but_no_reranker_does_not_call_rerank(self, service, cfg):
         cfg.rerank_enabled = True
         service.reranker = None
         candidate = make_candidate()
@@ -659,15 +642,14 @@ class TestRetrieve:
         service.vector_search = AsyncMock(return_value=[])
         service._neighbors = AsyncMock(return_value=[])
         p1, p2, p3, p4 = _patch_pipeline(
-            fused=[candidate], mmr_selected=[candidate],
+            fused=[candidate],
+            mmr_selected=[candidate],
         )
         with p1, p2, p3, p4:
             out = await service.retrieve(user_id=USER_ID, query="hello")
         assert out.reranked is False
 
-    async def test_rerank_enabled_and_successful_sorts_by_rerank_score(
-        self, service, cfg
-    ):
+    async def test_rerank_enabled_and_successful_sorts_by_rerank_score(self, service, cfg):
         cfg.rerank_enabled = True
         service.reranker = MagicMock()
         # First candidate scored low, second high
@@ -688,7 +670,9 @@ class TestRetrieve:
 
         p1, _, p3, p4 = _patch_pipeline(fused=[a, b], passages=[])
         with (
-            p1, p3, p4,
+            p1,
+            p3,
+            p4,
             patch(
                 "app.rag.retrieval.retrieval.mmr_select",
                 side_effect=fake_mmr,
@@ -711,7 +695,8 @@ class TestRetrieve:
         service.vector_search = AsyncMock(return_value=[])
         service._neighbors = AsyncMock(return_value=[])
         p1, p2, p3, p4 = _patch_pipeline(
-            fused=[candidate], mmr_selected=[candidate],
+            fused=[candidate],
+            mmr_selected=[candidate],
         )
         with p1, p2, p3, p4:
             out = await service.retrieve(user_id=USER_ID, query="hello")
@@ -738,7 +723,9 @@ class TestRetrieve:
 
         p1, _, p3, p4 = _patch_pipeline(fused=[a, b], passages=[])
         with (
-            p1, p3, p4,
+            p1,
+            p3,
+            p4,
             patch(
                 "app.rag.retrieval.retrieval.mmr_select",
                 side_effect=fake_mmr,
@@ -766,7 +753,9 @@ class TestRetrieve:
 
         p1, _, p3, p4 = _patch_pipeline(fused=[candidate])
         with (
-            p1, p3, p4,
+            p1,
+            p3,
+            p4,
             patch(
                 "app.rag.retrieval.retrieval.mmr_select",
                 side_effect=fake_mmr,
@@ -783,7 +772,8 @@ class TestRetrieve:
         service.vector_search = AsyncMock(return_value=[])
         service._neighbors = AsyncMock(return_value=[])
         p1, p2, p3, p4 = _patch_pipeline(
-            fused=[candidate], mmr_selected=[candidate],
+            fused=[candidate],
+            mmr_selected=[candidate],
         )
         with p1, p2, p3, p4:
             out = await service.retrieve(user_id=USER_ID, query="hello")
@@ -821,6 +811,7 @@ class TestRetrieve:
         async def slow_keyword(**_kw):
             started.append("keyword-start")
             import asyncio
+
             await asyncio.sleep(5)
             return []
 

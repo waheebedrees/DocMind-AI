@@ -1,11 +1,10 @@
 import itertools
-from app.core.config import settings
 import uuid
 from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
-
+from app.core.config import settings
 from app.db.repositories.user_repo import UserRepository
 from app.models.chunk import DocumentChunk
 from app.models.document import Document
@@ -98,6 +97,7 @@ def make_chunk(
         metadata_=metadata if metadata is not None else {},
     )
 
+
 @pytest.fixture
 async def other_user(session):
     u = make_user(email="other@example.com")
@@ -124,8 +124,7 @@ async def document(session, user):
 
 @pytest.fixture
 async def other_document(session, user):
-    doc = make_document(user_id=user.id, filename="other.pdf",
-                        content_hash="cafebabe")
+    doc = make_document(user_id=user.id, filename="other.pdf", content_hash="cafebabe")
     session.add(doc)
     await session.flush()
     return doc

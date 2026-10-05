@@ -3,8 +3,8 @@ import uuid
 import pytest
 from app.core.config import settings
 from app.db.repositories.chunks import ChunkRepository
-from app.rag.chunk import PreparedChunk
 from app.models.chunk import DocumentChunk
+from app.rag.chunk import PreparedChunk
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession

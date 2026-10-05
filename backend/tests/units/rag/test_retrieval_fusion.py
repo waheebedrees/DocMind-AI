@@ -6,7 +6,6 @@ from uuid import UUID, uuid4
 
 import numpy as np
 import pytest
-
 from app.rag.retrieval.ranking import mmr_select, reciprocal_rank_fusion
 from app.rag.retrieval.types import Candidate
 
@@ -110,8 +109,7 @@ def test_rrf_sorted_descending_by_fused_score():
     low = make_candidate(vector_rank=10)
     mid = make_candidate(vector_rank=5)
     out = reciprocal_rank_fusion([low, mid, high], [])
-    assert [c.chunk_id for c in out] == [
-        high.chunk_id, mid.chunk_id, low.chunk_id]
+    assert [c.chunk_id for c in out] == [high.chunk_id, mid.chunk_id, low.chunk_id]
 
 
 def test_rrf_does_not_include_keyword_rank_for_non_overlapping():
@@ -160,8 +158,8 @@ def test_mmr_orders_by_relevance_when_no_penalty():
 def test_mmr_prefers_diverse_at_low_lambda():
     """lambda_=0 → pick most dissimilar to already selected."""
     a = make_candidate(embedding=_unit(1, 0))
-    b = make_candidate(embedding=_unit(1, 0))   # same direction as a
-    c = make_candidate(embedding=_unit(0, 1))   # orthogonal
+    b = make_candidate(embedding=_unit(1, 0))  # same direction as a
+    c = make_candidate(embedding=_unit(0, 1))  # orthogonal
 
     out = mmr_select([a, b, c], k=2, lambda_=0.0)
     # First pick is index 0 (all equal relevance at start); second

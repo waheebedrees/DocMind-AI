@@ -119,7 +119,6 @@ class TestGetForUser:
         repo = DocumentRepository(db)
 
         result = await repo.get_for_user(document_id=doc.id, user_id=other.id)
-        
 
         assert result is None
 

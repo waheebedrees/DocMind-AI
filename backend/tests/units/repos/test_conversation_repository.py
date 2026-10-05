@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from app.db.repositories.conversation_repo import ConversationRepository
 
 pytestmark = pytest.mark.asyncio
@@ -51,20 +50,19 @@ class TestGetForUser:
 
 
 class TestListForUser:
-
     async def test_returns_newest_first(self, repo, session, user):
-            from datetime import UTC, datetime, timedelta
+        from datetime import UTC, datetime, timedelta
 
-            base = datetime(2024, 1, 1, tzinfo=UTC)
-            first = await repo.create(user_id=user.id, title="a")
-            second = await repo.create(user_id=user.id, title="b")
-            first.updated_at = base
-            second.updated_at = base + timedelta(seconds=1)
-            await session.flush()
+        base = datetime(2024, 1, 1, tzinfo=UTC)
+        first = await repo.create(user_id=user.id, title="a")
+        second = await repo.create(user_id=user.id, title="b")
+        first.updated_at = base
+        second.updated_at = base + timedelta(seconds=1)
+        await session.flush()
 
-            rows = await repo.list_for_user(user.id)
-            assert [c.id for c in rows] == [second.id, first.id]
-            
+        rows = await repo.list_for_user(user.id)
+        assert [c.id for c in rows] == [second.id, first.id]
+
     async def test_pagination_limit_and_offset(self, repo, user):
         convs = [await repo.create(user_id=user.id, title=str(i)) for i in range(5)]
         page = await repo.list_for_user(user.id, limit=2, offset=1)

@@ -22,18 +22,15 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
-
 from app.core.exceptions import (
     DocumentNotFound,
     InvalidTransition,
     JobAlreadyDone,
     JobAlreadyFailed,
-    JobNotFound,
-    TransientEmbeddingError,
 )
 from app.db.repositories.chunks import PreparedChunk
 from app.models.enums import DocumentStatus, JobStage, JobStatus
@@ -108,10 +105,8 @@ def assert_invariants(job: MagicMock, doc: MagicMock) -> None:
 @pytest.fixture
 def session() -> AsyncMock:
     s = AsyncMock()
-    s.commit = AsyncMock(side_effect=AssertionError(
-        "Ingester must not commit"))
-    s.rollback = AsyncMock(side_effect=AssertionError(
-        "Ingester must not rollback"))
+    s.commit = AsyncMock(side_effect=AssertionError("Ingester must not commit"))
+    s.rollback = AsyncMock(side_effect=AssertionError("Ingester must not rollback"))
     return s
 
 
@@ -142,6 +137,7 @@ def ingester_with_live_status(session: AsyncMock) -> Ingester:
 
     ing._documents.set_status.side_effect = set_status
     return ing
+
 
 # --- state-machine matrix: start_stage -------------------------------------
 
@@ -229,9 +225,7 @@ async def test_start_stage_queued_flushes_once(ingester, session):
 
 async def test_start_stage_reentrant_flushes_once(ingester, session):
     ingester._jobs.get_by_id.return_value = make_job(status=JobStatus.RUNNING)
-    ingester._documents.get_by_id.return_value = make_doc(
-        status=DocumentStatus.PROCESSING
-    )
+    ingester._documents.get_by_id.return_value = make_doc(status=DocumentStatus.PROCESSING)
     await ingester.start_stage(JOB_ID)
     assert session.flush.await_count == 1
 
@@ -245,8 +239,7 @@ async def test_start_stage_raises_before_flush_on_terminal_job(ingester, session
 
 async def test_start_stage_raises_before_mutation_on_terminal_doc(ingester, session):
     ingester._jobs.get_by_id.return_value = make_job()
-    ingester._documents.get_by_id.return_value = make_doc(
-        status=DocumentStatus.INDEXED)
+    ingester._documents.get_by_id.return_value = make_doc(status=DocumentStatus.INDEXED)
     with pytest.raises(InvalidTransition):
         await ingester.start_stage(JOB_ID)
     # No flush means no partial writes
@@ -255,9 +248,7 @@ async def test_start_stage_raises_before_mutation_on_terminal_doc(ingester, sess
 
 async def test_complete_stage_flushes_once(ingester, session):
     ingester._jobs.get_by_id.return_value = make_job(status=JobStatus.RUNNING)
-    ingester._documents.get_by_id.return_value = make_doc(
-        status=DocumentStatus.PROCESSING
-    )
+    ingester._documents.get_by_id.return_value = make_doc(status=DocumentStatus.PROCESSING)
     await ingester.complete_stage(JOB_ID, details={}, next_stage=None)
     assert session.flush.await_count == 1
 
@@ -268,7 +259,6 @@ async def test_fail_stage_noop_still_flushes(ingester, session):
     ingester._jobs.get_by_id.return_value = None
     await ingester.fail_stage(JOB_ID, error="boom")
     assert session.flush.await_count == 1
-
 
 
 async def test_ingester_never_commits_or_rolls_back(ingester_with_live_status, session):
@@ -287,16 +277,6 @@ async def test_ingester_never_commits_or_rolls_back(ingester_with_live_status, s
     session.rollback.assert_not_awaited()
 
 
-async def test_start_stage_document_missing_does_not_commit(ingester, session):
-    """Docstring contract: DocumentNotFound raises without touching the
-    job or flushing. The caller decides cleanup."""
-    ingester._jobs.get_by_id.return_value = make_job(status=JobStatus.QUEUED)
-    ingester._documents.get_by_id.return_value = None
-    with pytest.raises(DocumentNotFound):
-        await ingester.start_stage(JOB_ID)
-    session.flush.assert_not_awaited()
-    session.commit.assert_not_awaited()
-    
 # --- invariants ------------------------------------------------------------
 
 
@@ -355,16 +335,13 @@ async def test_fail_stage_invariants(ingester):
         ({"a": 1}, {}, {"a": 1}),
         ({"a": 1}, {"a": 2}, {"a": 2}),
         ({"a": 1, "b": 2}, {"b": 3, "c": 4}, {"a": 1, "b": 3, "c": 4}),
-        ({"nested": {"x": 1}}, {"nested": {"y": 2}},
-         {"nested": {"y": 2}}),  # shallow
+        ({"nested": {"x": 1}}, {"nested": {"y": 2}}, {"nested": {"y": 2}}),  # shallow
     ],
 )
 async def test_complete_stage_merge_semantics(ingester, existing, incoming, expected):
     job = make_job(status=JobStatus.RUNNING, details=existing)
     ingester._jobs.get_by_id.return_value = job
-    ingester._documents.get_by_id.return_value = make_doc(
-        status=DocumentStatus.PROCESSING
-    )
+    ingester._documents.get_by_id.return_value = make_doc(status=DocumentStatus.PROCESSING)
     await ingester.complete_stage(JOB_ID, details=incoming, next_stage=None)
     assert job.details == expected
 
@@ -373,9 +350,7 @@ async def test_complete_stage_does_not_mutate_caller_details(ingester):
     caller_details = {"a": 1}
     job = make_job(status=JobStatus.RUNNING, details={"b": 2})
     ingester._jobs.get_by_id.return_value = job
-    ingester._documents.get_by_id.return_value = make_doc(
-        status=DocumentStatus.PROCESSING
-    )
+    ingester._documents.get_by_id.return_value = make_doc(status=DocumentStatus.PROCESSING)
     await ingester.complete_stage(JOB_ID, details=caller_details, next_stage=None)
     assert caller_details == {"a": 1}
 
@@ -429,15 +404,11 @@ async def test_full_pipeline_state_progression(ingester_with_live_status):
     )
 
     ingester._jobs.create_enqueue.return_value = job_chunk
-    await ingester.complete_stage(
-        JOB_ID, details={"pages": 42}, next_stage=JobStage.CHUNK
-    )
+    await ingester.complete_stage(JOB_ID, details={"pages": 42}, next_stage=JobStage.CHUNK)
     assert job_extract.status == JobStatus.DONE
     assert doc.page_count == 42
     assert doc.status == DocumentStatus.PROCESSING  # unchanged mid-pipeline
-    ingester._jobs.create_enqueue.assert_awaited_with(
-        document_id=doc.id, stage=JobStage.CHUNK
-    )
+    ingester._jobs.create_enqueue.assert_awaited_with(document_id=doc.id, stage=JobStage.CHUNK)
 
     # --- CHUNK ---
     ingester._jobs.get_by_id.return_value = job_chunk
@@ -445,9 +416,7 @@ async def test_full_pipeline_state_progression(ingester_with_live_status):
     assert job_chunk.status == JobStatus.RUNNING
 
     ingester._jobs.create_enqueue.return_value = job_embed
-    await ingester.complete_stage(
-        JOB_ID, details={"chunks": 128}, next_stage=JobStage.EMBED
-    )
+    await ingester.complete_stage(JOB_ID, details={"chunks": 128}, next_stage=JobStage.EMBED)
     assert job_chunk.status == JobStatus.DONE
 
     # --- EMBED ---
@@ -456,9 +425,7 @@ async def test_full_pipeline_state_progression(ingester_with_live_status):
     assert job_embed.status == JobStatus.RUNNING
 
     ingester._jobs.create_enqueue.return_value = job_index
-    await ingester.complete_stage(
-        JOB_ID, details={"embedded": 128}, next_stage=JobStage.INDEX
-    )
+    await ingester.complete_stage(JOB_ID, details={"embedded": 128}, next_stage=JobStage.INDEX)
     assert job_embed.status == JobStatus.DONE
 
     # --- INDEX (terminal) ---
@@ -466,15 +433,14 @@ async def test_full_pipeline_state_progression(ingester_with_live_status):
     await ingester.start_stage(JOB_ID, stage=JobStage.INDEX)
     assert job_index.status == JobStatus.RUNNING
 
-    result = await ingester.complete_stage(
-        JOB_ID, details={"inserted": 128}, next_stage=None
-    )
+    result = await ingester.complete_stage(JOB_ID, details={"inserted": 128}, next_stage=None)
     assert result is None
     assert job_index.status == JobStatus.DONE
     assert doc.status == DocumentStatus.INDEXED
     assert doc.indexed_at is not None
     assert doc.metadata_["chunk_count"] == 128
     assert ingester._jobs.create_enqueue.await_count == 3
+
 
 async def test_pipeline_failure_mid_stage(ingester):
     """A permanent failure at stage N marks job and doc FAILED, leaving
@@ -493,6 +459,7 @@ async def test_pipeline_failure_mid_stage(ingester):
 
 
 # --- concurrency -----------------------------------------------------------
+
 
 async def test_two_jobs_different_documents_run_independently(ingester):
     """Two concurrent start_stage calls on distinct jobs must not share
@@ -528,8 +495,8 @@ async def test_two_jobs_different_documents_run_independently(ingester):
     assert job_b.status == JobStatus.RUNNING
     assert doc_a.status == DocumentStatus.PROCESSING
     assert doc_b.status == DocumentStatus.PROCESSING
-    
-    
+
+
 async def test_start_stage_raises_specific_terminal_exceptions(ingester):
     """JobAlreadyDone and JobAlreadyFailed are distinguishable — callers
     can branch on them without catching a generic parent."""
@@ -546,12 +513,11 @@ async def test_start_stage_raises_invalid_transition_for_bad_doc_status(ingester
     """A non-terminal job with an unmoveable document raises the generic
     InvalidTransition, not a terminal-specific subclass."""
     ingester._jobs.get_by_id.return_value = make_job(status=JobStatus.QUEUED)
-    ingester._documents.get_by_id.return_value = make_doc(
-        status=DocumentStatus.INDEXED
-    )
+    ingester._documents.get_by_id.return_value = make_doc(status=DocumentStatus.INDEXED)
     with pytest.raises(InvalidTransition):
         await ingester.start_stage(JOB_ID)
-        
+
+
 async def test_reentrant_start_stage_is_stable(ingester):
     """ARQ delivers the same job twice — start_stage must not double-mutate."""
     job = make_job(status=JobStatus.RUNNING, started_at=datetime.now(UTC))
@@ -659,13 +625,14 @@ async def test_start_stage_document_missing_does_not_commit(ingester, session):
     session.flush.assert_not_awaited()
     session.commit.assert_not_awaited()
 
+
 # --- error-type specificity ------------------------------------------------
 
 
 @pytest.mark.parametrize(
     "status, expected_exc",
     [
-        (JobStatus.QUEUED, InvalidTransition),   # bad doc status
+        (JobStatus.QUEUED, InvalidTransition),  # bad doc status
         (JobStatus.RUNNING, InvalidTransition),  # bad doc status
         (JobStatus.DONE, JobAlreadyDone),
         (JobStatus.FAILED, JobAlreadyFailed),
@@ -677,9 +644,6 @@ async def test_start_stage_rejects_terminal_doc(ingester, status, expected_exc):
     specific exceptions before the doc is ever read; non-terminal jobs
     raise the generic InvalidTransition."""
     ingester._jobs.get_by_id.return_value = make_job(status=status)
-    ingester._documents.get_by_id.return_value = make_doc(
-        status=DocumentStatus.INDEXED
-    )
+    ingester._documents.get_by_id.return_value = make_doc(status=DocumentStatus.INDEXED)
     with pytest.raises(expected_exc):
         await ingester.start_stage(JOB_ID)
-

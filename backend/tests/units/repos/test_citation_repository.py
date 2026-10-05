@@ -5,12 +5,11 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-from sqlalchemy.exc import IntegrityError
-
 from app.db.repositories.citation_repo import CitationRepository
 from app.db.repositories.conversation_repo import ConversationRepository
 from app.db.repositories.message_repo import MessageRepository
 from app.models.enums import MessageRole
+from sqlalchemy.exc import IntegrityError
 
 pytestmark = pytest.mark.asyncio
 
@@ -23,9 +22,7 @@ def repo(session):
 @pytest.fixture
 async def message(session, user):
     conv = await ConversationRepository(session).create(user_id=user.id)
-    return await MessageRepository(session).create(
-        conversation_id=conv.id, role=MessageRole.ASSISTANT, content="answer"
-    )
+    return await MessageRepository(session).create(conversation_id=conv.id, role=MessageRole.ASSISTANT, content="answer")
 
 
 class TestBulkInsert:
@@ -44,21 +41,16 @@ class TestBulkInsert:
         assert await repo.bulk_insert([]) == 0
 
     async def test_rows_are_retrievable_with_all_fields(self, repo, message, chunk):
-        await repo.bulk_insert(
-            [{"message_id": message.id, "chunk_id": chunk.id, "score": 0.75, "rank": 1}]
-        )
+        await repo.bulk_insert([{"message_id": message.id, "chunk_id": chunk.id, "score": 0.75, "rank": 1}])
         rows = await repo.list_for_message(message.id)
         assert len(rows) == 1
         assert rows[0].score == 0.75
         assert rows[0].rank == 1
         assert rows[0].chunk_id == chunk.id
 
-    async def test_duplicate_message_chunk_raises_integrity_error(
-        self, repo, message, chunk
-    ):
+    async def test_duplicate_message_chunk_raises_integrity_error(self, repo, message, chunk):
         """One citation per (message, chunk); the second insert must fail."""
-        row = {"message_id": message.id,
-               "chunk_id": chunk.id, "score": 0.5, "rank": 1}
+        row = {"message_id": message.id, "chunk_id": chunk.id, "score": 0.5, "rank": 1}
         await repo.bulk_insert([row])
         with pytest.raises(IntegrityError, match="uq_citation_message_chunk"):
             await repo.bulk_insert([row])
@@ -84,15 +76,9 @@ class TestListForMessage:
 
     async def test_does_not_leak_across_messages(self, repo, session, user, message, chunk):
         other_conv = await ConversationRepository(session).create(user_id=user.id)
-        other_msg = await MessageRepository(session).create(
-            conversation_id=other_conv.id, role=MessageRole.ASSISTANT, content="other"
-        )
-        await repo.bulk_insert(
-            [{"message_id": message.id, "chunk_id": chunk.id, "score": 0.5, "rank": 1}]
-        )
-        await repo.bulk_insert(
-            [{"message_id": other_msg.id, "chunk_id": chunk.id, "score": 0.5, "rank": 1}]
-        )
+        other_msg = await MessageRepository(session).create(conversation_id=other_conv.id, role=MessageRole.ASSISTANT, content="other")
+        await repo.bulk_insert([{"message_id": message.id, "chunk_id": chunk.id, "score": 0.5, "rank": 1}])
+        await repo.bulk_insert([{"message_id": other_msg.id, "chunk_id": chunk.id, "score": 0.5, "rank": 1}])
         rows = await repo.list_for_message(message.id)
         assert [r.message_id for r in rows] == [message.id]
 
@@ -100,15 +86,9 @@ class TestListForMessage:
 class TestCountForMessage:
     async def test_counts_only_target_message(self, repo, session, user, message, chunk):
         other_conv = await ConversationRepository(session).create(user_id=user.id)
-        other_msg = await MessageRepository(session).create(
-            conversation_id=other_conv.id, role=MessageRole.ASSISTANT, content="other"
-        )
-        await repo.bulk_insert(
-            [{"message_id": message.id, "chunk_id": chunk.id, "score": 0.5, "rank": 1}]
-        )
-        await repo.bulk_insert(
-            [{"message_id": other_msg.id, "chunk_id": chunk.id, "score": 0.5, "rank": 1}]
-        )
+        other_msg = await MessageRepository(session).create(conversation_id=other_conv.id, role=MessageRole.ASSISTANT, content="other")
+        await repo.bulk_insert([{"message_id": message.id, "chunk_id": chunk.id, "score": 0.5, "rank": 1}])
+        await repo.bulk_insert([{"message_id": other_msg.id, "chunk_id": chunk.id, "score": 0.5, "rank": 1}])
         assert await repo.count_for_message(message.id) == 1
 
     async def test_zero_for_missing_message(self, repo):
@@ -128,18 +108,14 @@ class TestDeleteForMessage:
         assert await repo.delete_for_message(message.id) == 2
 
     async def test_is_idempotent(self, repo, message, chunk):
-        await repo.bulk_insert(
-            [{"message_id": message.id, "chunk_id": chunk.id, "score": 0.5, "rank": 1}]
-        )
+        await repo.bulk_insert([{"message_id": message.id, "chunk_id": chunk.id, "score": 0.5, "rank": 1}])
         await repo.delete_for_message(message.id)
         assert await repo.delete_for_message(message.id) == 0
 
 
 class TestCascade:
     async def test_deleting_message_cascades_to_citations(self, repo, session, message, chunk):
-        await repo.bulk_insert(
-            [{"message_id": message.id, "chunk_id": chunk.id, "score": 0.5, "rank": 1}]
-        )
+        await repo.bulk_insert([{"message_id": message.id, "chunk_id": chunk.id, "score": 0.5, "rank": 1}])
         await session.delete(message)
         await session.flush()
         assert await repo.count_for_message(message.id) == 0

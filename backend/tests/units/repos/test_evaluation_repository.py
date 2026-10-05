@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import pytest
-
-from app.models.enums import EvaluationStatus
 from app.db.repositories.evaluation_repo import (
     EvaluationResultRepository,
     EvaluationRunRepository,
 )
+from app.models.enums import EvaluationStatus
 
 pytestmark = pytest.mark.asyncio
 
@@ -178,20 +177,14 @@ class TestResultListAndCount:
     async def test_count_only_target_run(self, results, runs, user):
         a = await runs.create(user_id=user.id, name="a", dataset_size=1, pipeline_version="v1")
         b = await runs.create(user_id=user.id, name="b", dataset_size=1, pipeline_version="v1")
-        await results.bulk_insert(
-            [{"run_id": a.id, "question": "q", "expected_answer": "e", "actual_answer": "a", "metrics": {}}]
-        )
-        await results.bulk_insert(
-            [{"run_id": b.id, "question": "q", "expected_answer": "e", "actual_answer": "a", "metrics": {}}]
-        )
+        await results.bulk_insert([{"run_id": a.id, "question": "q", "expected_answer": "e", "actual_answer": "a", "metrics": {}}])
+        await results.bulk_insert([{"run_id": b.id, "question": "q", "expected_answer": "e", "actual_answer": "a", "metrics": {}}])
         assert await results.count_for_run(a.id) == 1
 
 
 class TestResultCascade:
     async def test_deleting_run_cascades_to_results(self, results, runs, session, user):
         run = await runs.create(user_id=user.id, name="x", dataset_size=1, pipeline_version="v1")
-        await results.bulk_insert(
-            [{"run_id": run.id, "question": "q", "expected_answer": "e", "actual_answer": "a", "metrics": {}}]
-        )
+        await results.bulk_insert([{"run_id": run.id, "question": "q", "expected_answer": "e", "actual_answer": "a", "metrics": {}}])
         await runs.delete_for_user(run.id, user.id)
         assert await results.count_for_run(run.id) == 0
