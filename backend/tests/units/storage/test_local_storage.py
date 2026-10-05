@@ -397,3 +397,5 @@ async def test_startup_is_idempotent(storage):
     await storage.startup()
     await storage.startup()
     assert storage._tmp.is_dir()
+
+

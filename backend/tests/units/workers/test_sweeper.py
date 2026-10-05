@@ -9,14 +9,18 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.models.enums import JobStage, JobStatus
-from app.services.storage.base import ObjectNotFound
+from app.services.storage.base import ObjectNotFound, InvalidKey
 from app.workers import sweeper as S
+
 
 
 USER_ID = UUID("11111111-2222-3333-4444-555555555555")
 DOC_ID = UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 JOB_ID = UUID("99999999-8888-7777-6666-555555555555")
 
+# Valid shapes for both key paths the sweeper routes on.
+PIPELINE_KEY = "_pipeline/cache/abcdef0123456789/" + "a" * 64 + "/chunks.json.gz"
+USER_KEY = f"{USER_ID}/ab/" + "a" * 64 + ".pdf"
 
 # --- fixtures ------------------------------------------------------------
 
@@ -177,20 +181,6 @@ async def test_load_live_keys_handles_null_columns():
 
 
 
-async def test_sweep_orphans_deletes_orphan(session_cm):
-    old = datetime.now(UTC) - timedelta(hours=5)
-    storage = _storage([("orphan/key", old)])
-
-    with patch.object(S, "AsyncSessionLocal", session_cm), patch.object(
-        S, "_load_live_keys", new=AsyncMock(return_value=(set(), set()))
-    ):
-        result = await S.sweep_orphans({"storage": storage})
-
-    assert "scanned=1" in result
-    assert "deleted=1" in result
-    storage.delete_raw.assert_awaited_once_with("orphan/key")
-
-
 async def test_sweep_orphans_skips_live_key(session_cm):
     old = datetime.now(UTC) - timedelta(hours=5)
     storage = _storage([("live/key", old)])
@@ -217,9 +207,24 @@ async def test_sweep_orphans_skips_within_grace(session_cm):
     storage.delete_raw.assert_not_awaited()
 
 
+async def test_sweep_orphans_deletes_orphan(session_cm):
+    old = datetime.now(UTC) - timedelta(hours=5)
+    storage = _storage([(PIPELINE_KEY, old)])
+
+    with patch.object(S, "AsyncSessionLocal", session_cm), patch.object(
+        S, "_load_live_keys", new=AsyncMock(return_value=(set(), set()))
+    ):
+        result = await S.sweep_orphans({"storage": storage})
+
+    assert "scanned=1" in result
+    assert "deleted=1" in result
+    storage.delete_raw.assert_awaited_once_with(PIPELINE_KEY)
+    storage.delete.assert_not_awaited()
+
+
 async def test_sweep_orphans_caps_deletes(session_cm):
     old = datetime.now(UTC) - timedelta(hours=5)
-    keys = [(f"orphan/{i}", old) for i in range(S.MAX_DELETES_PER_RUN + 10)]
+    keys = [(PIPELINE_KEY, old)] * (S.MAX_DELETES_PER_RUN + 10)
     storage = _storage(keys)
 
     with patch.object(S, "AsyncSessionLocal", session_cm), patch.object(
@@ -233,7 +238,7 @@ async def test_sweep_orphans_caps_deletes(session_cm):
 
 async def test_sweep_orphans_tolerates_delete_failure(session_cm):
     old = datetime.now(UTC) - timedelta(hours=5)
-    storage = _storage([("orphan/1", old), ("orphan/2", old)])
+    storage = _storage([(PIPELINE_KEY, old), (PIPELINE_KEY, old)])
     storage.delete_raw.side_effect = [RuntimeError("boom"), None]
 
     with patch.object(S, "AsyncSessionLocal", session_cm), patch.object(
@@ -246,7 +251,7 @@ async def test_sweep_orphans_tolerates_delete_failure(session_cm):
 
 async def test_sweep_orphans_ignores_object_not_found(session_cm):
     old = datetime.now(UTC) - timedelta(hours=5)
-    storage = _storage([("orphan/1", old)])
+    storage = _storage([(PIPELINE_KEY, old)])
     storage.delete_raw.side_effect = ObjectNotFound("gone")
 
     with patch.object(S, "AsyncSessionLocal", session_cm), patch.object(
@@ -255,7 +260,7 @@ async def test_sweep_orphans_ignores_object_not_found(session_cm):
         result = await S.sweep_orphans({"storage": storage})
 
     assert "deleted=0" in result
-
+    
 
 async def test_sweep_orphans_empty_storage(session_cm):
     storage = _storage([])
@@ -268,10 +273,6 @@ async def test_sweep_orphans_empty_storage(session_cm):
     assert result == "scanned=0 deleted=0 skipped_grace=0"
 
 
-@pytest.mark.xfail(
-    reason="delete_raw rejects user keys; see bug report — remove xfail once fixed",
-    strict=True,
-)
 async def test_sweep_orphans_handles_user_key_below(session_cm):
     """A user-uploaded orphan (not a pipeline key) should also be swept.
 
@@ -411,3 +412,24 @@ async def test_sweep_pipeline_handles_empty_stuck_list(session_cm):
 
     assert result == "requeued=0 failed=0 skipped=0"
     redis.enqueue_job.assert_not_awaited()
+    
+    
+async def test_sweep_orphans_logs_bad_key_and_continues(session_cm):
+    """A malformed key shouldn't crash the sweep or count as a deletion."""
+    old = datetime.now(UTC) - timedelta(hours=5)
+    storage = _storage([("not-a-key", old), (PIPELINE_KEY, old)])
+    # The sweeper only calls `delete`/`delete_raw` with keys that at least
+    # attempted validation. Force `delete` to raise InvalidKey on the
+    # non-pipeline key to exercise the branch.
+
+    async def delete(k):
+        raise InvalidKey(f"not a valid key: {k!r}")
+
+    storage.delete.side_effect = delete
+
+    with patch.object(S, "AsyncSessionLocal", session_cm), patch.object(
+        S, "_load_live_keys", new=AsyncMock(return_value=(set(), set()))
+    ):
+        result = await S.sweep_orphans({"storage": storage})
+
+    assert "deleted=1" in result  # only the pipeline-key one succeeded

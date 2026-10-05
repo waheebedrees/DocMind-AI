@@ -30,7 +30,7 @@ from app.db.session import AsyncSessionLocal
 from app.models.document import Document
 from app.models.enums import JobStatus
 from app.services.storage import BaseStorage
-from app.services.storage.base import ObjectNotFound
+from app.services.storage.base import ObjectNotFound, InvalidKey
 from app.services.storage.keys import (
     chunks_key,
     clean_key,
@@ -38,6 +38,7 @@ from app.services.storage.keys import (
     parsed_key,
 )
 from app.workers.tasks import _STAGE_TASK
+from app.services.storage.base import _PIPELINE_KEY_RE
 
 log = get_logger(__name__)
 
@@ -115,7 +116,7 @@ async def _load_live_keys(session: AsyncSession) -> tuple[set[str], set[tuple[UU
     Returns:
         A ``(live_keys, live_prefixes)`` tuple.
     """
-    result = await session.execute(
+    result = (await session.execute(
         select(
             Document.storage_key,
             Document.parsed_key,
@@ -123,11 +124,12 @@ async def _load_live_keys(session: AsyncSession) -> tuple[set[str], set[tuple[UU
             Document.user_id,
             Document.id,
         )
-    )
+    )).all()
+    
     live: set[str] = set()
     prefixes: set[tuple[UUID, UUID]] = set()
 
-    for storage_key, parsed, content_hash, user_id, doc_id in result.all():
+    for storage_key, parsed, content_hash, user_id, doc_id in result:
         prefixes.add((user_id, doc_id))
         if storage_key:
             live.add(storage_key)
@@ -235,20 +237,25 @@ async def sweep_orphans(ctx: dict) -> str:
     async for key, last_modified in storage.list_keys():
         scanned += 1
 
+
         if _is_live(key, live_keys, live_prefixes):
             continue
 
         if _within_grace(last_modified, cutoff):
             skipped_grace += 1
             continue
-
         try:
-            await storage.delete_raw(key)
+            if _PIPELINE_KEY_RE.match(key):
+                await storage.delete_raw(key)
+            else:
+                await storage.delete(key)
             deleted += 1
             log.info("orphan_deleted", key=key)
         except ObjectNotFound:
             pass
-        except Exception as exc:  # noqa: BLE001
+        except InvalidKey:
+            log.warning("orphan_bad_key", key=key)
+        except Exception as exc:
             log.warning("orphan_delete_failed", key=key, error=str(exc))
             continue
 

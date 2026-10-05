@@ -194,12 +194,17 @@ class LocalStorage(BaseStorage):
         # contract: writing through it corrupts content addressing.
         yield path
 
+
     async def exists(self, key: str) -> bool:
-        """True if the object exists. Returns False for keys outside the
-        user namespace (e.g. cache keys that don't match _KEY_RE)."""
-    
+        """True if the object exists.
+
+        Raises:
+            InvalidKey: The key doesn't match the user or pipeline key shape,
+                or it would escape the storage root.
+        """
         path = self._resolve(key)
         return await asyncio.to_thread(path.is_file)
+
 
     async def delete(self, key: str) -> None:
         path = self._resolve(key)
@@ -208,16 +213,18 @@ class LocalStorage(BaseStorage):
         # concurrent put_stream; an explicit iterdir probe cannot.
         await asyncio.to_thread(rmdir_quiet, path.parent)
 
-    async def put_bytes(self, key, data):
-        path = self._root / key
+
+    async def put_bytes(self, key: str, data: bytes) -> None:
+        path = self._resolve(key)
         await asyncio.to_thread(path.parent.mkdir, parents=True, exist_ok=True)
         tmp = path.with_suffix(path.suffix + ".tmp")
         await asyncio.to_thread(tmp.write_bytes, data)
         await asyncio.to_thread(os.replace, tmp, path)
 
-    async def get_bytes(self, key):
-        path = self._root / key
-        if not await asyncio.to_thread(path.exists):
+
+    async def get_bytes(self, key: str) -> bytes:
+        path = self._resolve(key)
+        if not await asyncio.to_thread(path.is_file):
             raise ObjectNotFound(f"object not found: {key}")
         return await asyncio.to_thread(path.read_bytes)
 
@@ -238,4 +245,5 @@ class LocalStorage(BaseStorage):
                 continue
             if path.resolve().is_relative_to(tmp_dir):
                 continue  # skip in-flight uploads
-            yield str(path.relative_to(root)), path.stat().st_mtime
+
+            yield path.relative_to(root).as_posix(), path.stat().st_mtime

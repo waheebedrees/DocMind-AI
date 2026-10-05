@@ -377,3 +377,30 @@ class S3Storage(BaseStorage):
             await self._client.delete_object(Bucket=self._bucket, Key=s3_key)
         except Exception as e:
             raise StorageError(f"S3 delete_object failed: {e}") from e
+
+
+    async def put_bytes(self, key: str, data: bytes) -> None:
+        if not _PIPELINE_KEY_RE.match(key):
+            raise InvalidKey(f"not a valid pipeline key: {key!r}")
+        s3_key = f"{self._prefix}{key}" if self._prefix else key
+        try:
+            await self._client.put_object(Bucket=self._bucket, Key=s3_key, Body=data)
+        except Exception as e:
+            raise StorageError(f"S3 put_object failed: {e}") from e
+
+
+    async def get_bytes(self, key: str) -> bytes:
+        if not _PIPELINE_KEY_RE.match(key):
+            raise InvalidKey(f"not a valid pipeline key: {key!r}")
+        s3_key = f"{self._prefix}{key}" if self._prefix else key
+        try:
+            resp = await self._client.get_object(Bucket=self._bucket, Key=s3_key)
+        except Exception as e:
+            if error_code(e) in {"404", "NoSuchKey", "NotFound"}:
+                raise ObjectNotFound(f"Object not found: {key}") from e
+            raise StorageError(f"S3 get_object failed: {e}") from e
+        body = resp["Body"]
+        try:
+            return await body.read()
+        finally:
+            body.close()
