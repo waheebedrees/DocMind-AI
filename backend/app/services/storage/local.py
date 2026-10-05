@@ -13,15 +13,14 @@ from app.core.logging import get_logger
 from app.services.storage.base import (
     _CHUNK,
     _HEAD_BYTES,
-    _KEY_RE,
     _PIPELINE_KEY_RE,
     _WRITE_BUFFER,
-    validate_key,
     BaseStorage,
     InvalidKey,
     ObjectNotFound,
     StoredObject,
     UploadTooLarge,
+    validate_key,
 )
 from app.services.storage.mime import detect_mime, extension_for
 
@@ -194,7 +193,6 @@ class LocalStorage(BaseStorage):
         # contract: writing through it corrupts content addressing.
         yield path
 
-
     async def exists(self, key: str) -> bool:
         """True if the object exists.
 
@@ -205,7 +203,6 @@ class LocalStorage(BaseStorage):
         path = self._resolve(key)
         return await asyncio.to_thread(path.is_file)
 
-
     async def delete(self, key: str) -> None:
         path = self._resolve(key)
         await asyncio.to_thread(unlink_quiet, path)
@@ -213,14 +210,12 @@ class LocalStorage(BaseStorage):
         # concurrent put_stream; an explicit iterdir probe cannot.
         await asyncio.to_thread(rmdir_quiet, path.parent)
 
-
     async def put_bytes(self, key: str, data: bytes) -> None:
         path = self._resolve(key)
         await asyncio.to_thread(path.parent.mkdir, parents=True, exist_ok=True)
         tmp = path.with_suffix(path.suffix + ".tmp")
         await asyncio.to_thread(tmp.write_bytes, data)
         await asyncio.to_thread(os.replace, tmp, path)
-
 
     async def get_bytes(self, key: str) -> bytes:
         path = self._resolve(key)

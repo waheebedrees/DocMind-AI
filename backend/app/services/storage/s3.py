@@ -88,7 +88,7 @@ class S3Storage(BaseStorage):
 
     def _s3_key(self, key: str) -> str:
         """Logical key → physical S3 object key, after validation."""
-        
+
         if not _KEY_RE.match(key):
             raise InvalidKey(f"Malformed key: {key!r}")
         return f"{self._prefix}{key}"
@@ -378,7 +378,6 @@ class S3Storage(BaseStorage):
         except Exception as e:
             raise StorageError(f"S3 delete_object failed: {e}") from e
 
-
     async def put_bytes(self, key: str, data: bytes) -> None:
         if not _PIPELINE_KEY_RE.match(key):
             raise InvalidKey(f"not a valid pipeline key: {key!r}")
@@ -387,7 +386,6 @@ class S3Storage(BaseStorage):
             await self._client.put_object(Bucket=self._bucket, Key=s3_key, Body=data)
         except Exception as e:
             raise StorageError(f"S3 put_object failed: {e}") from e
-
 
     async def get_bytes(self, key: str) -> bytes:
         if not _PIPELINE_KEY_RE.match(key):
