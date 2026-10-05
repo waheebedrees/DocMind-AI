@@ -103,27 +103,38 @@ class Ingester:
     ) -> ProcessingJob:
         """Transition job queued → running and its document → processing.
 
-        Idempotent for a job already RUNNING or FAILED, so an ARQ retry
-        can call it again without error. Commits the "document missing"
-        case itself, since there is no caller to commit for.
+        Idempotent for a job already RUNNING (an ARQ retry re-invokes it
+        without error); re-stamps ``started_at`` only if it was missing.
+        Terminal jobs are rejected — this is not idempotent for DONE or
+        FAILED, since re-running a finished stage must not happen.
+
+        Does not commit; the caller owns the transaction boundary.
 
         Args:
             job_id: The job to start.
+            stage: If provided, asserts the job is for this stage; a
+                mismatch raises InvalidTransition before any state is
+                touched.
 
         Returns:
-            The job row, now in RUNNING state. The caller owns the
-            commit.
+            The job row, now in RUNNING state. Document status is also
+            moved to PROCESSING when it was PENDING.
 
         Raises:
             JobNotFound: The job row is gone. ``run_stage`` treats this
-                as a benign exit.
+                as a benign exit (likely the document was deleted).
             DocumentNotFound: The job exists but its document doesn't.
-                The job is marked FAILED and the transaction committed
-                before raising.
+                Nothing is mutated or committed; the caller decides
+                whether to fail the job.
+            JobAlreadyDone: Duplicate delivery after success. Benign;
+                the caller should return without retry.
+            JobAlreadyFailed: Duplicate delivery after permanent
+                failure. Benign; the caller should return without retry.
             InvalidTransition: The job or document is in a state that
-                cannot transition to running/processing.
+                cannot transition to running/processing (e.g. a stage
+                mismatch, or a document that is INDEXED/FAILED).
         """
-
+        
         job = await self._jobs.get_by_id(job_id)
         if job is None:
             raise JobNotFound(str(job_id))
@@ -140,6 +151,8 @@ class Ingester:
 
         doc = await self._documents.get_by_id(job.document_id)
         if doc is None:
+            # Can't fail the job: fail_stage would try to load the same missing
+            # document. Just leave the job; the sweeper will reap it.
             raise DocumentNotFound(str(job.document_id))
 
         if doc.status not in (DocumentStatus.PENDING, DocumentStatus.PROCESSING):
