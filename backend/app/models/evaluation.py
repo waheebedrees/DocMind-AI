@@ -36,7 +36,7 @@ class EvaluationRun(TimestampMixin, Base):
     results: Mapped[list["EvaluationResult"]] = relationship(back_populates="run", cascade="all, delete-orphan")
 
 
-class EvaluationResult(UUIDMixin, TimestampMixin, Base):
+class EvaluationResult(TimestampMixin, Base):
     __tablename__ = "evaluation_results"
 
     run_id: Mapped[UUID] = mapped_column(
